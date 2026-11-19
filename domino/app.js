@@ -29,6 +29,7 @@
   const drawButton = byId('draw');
   const quickChat = byId('quick-chat');
   const quickChatMenu = byId('quick-chat-menu');
+  const quickEnds = byId('quick-ends');
   const quickMessages = globalThis.DominoQuickMessages ?? {};
   const quickBubbles = new Map();
   const continueButton = byId('continue');
@@ -971,7 +972,7 @@
     };
   }
 
-  function renderBoard(origin, cue) {
+  function renderBoard(origin, cue, choices = selectedMoves(yourMoves())) {
     if (!game) return;
     const { board } = game;
     const width = boardView.clientWidth;
@@ -1007,12 +1008,12 @@
       position(node, piece.x, piece.y);
       children.push(node);
     }
-    const placing = selectedTileId !== null && isYourTurn();
     for (const tip of tips) {
-      const node = element(placing ? 'button' : 'span', 'board-end');
+      const available = choices.some(move => move.side === tip.side);
+      const node = element(available ? 'button' : 'span', 'board-end');
       node.append(element('span', 'board-end-marker', tip.pip));
       const label = directions[tip.side] + ', ' + tip.pip;
-      if (placing) {
+      if (available) {
         node.type = 'button';
         node.dataset.side = tip.side;
         // Expand the transparent tap area, without covering another end or escaping the board.
@@ -1050,7 +1051,7 @@
     positionMoveCue();
   }
 
-  function renderRack(moves) {
+  function renderRack(moves, choices) {
     const playing = game.phase === 'playing';
     const yourTurn = isYourTurn();
     const rackLabel = byId('rack-label');
@@ -1059,6 +1060,16 @@
     hand.hidden = !playing;
     roundHands.hidden = playing;
     roundRemainderTotal.hidden = playing;
+    const buttons = engine.openEnds(game.board)
+      .filter(end => choices.some(move => move.side === end.side))
+      .map(({ side, pip }) => {
+        const button = element('button', 'button', directions[side] + ' · ' + pip);
+        button.type = 'button';
+        button.addEventListener('click', () => playSelected(side));
+        return button;
+      });
+    quickEnds.hidden = buttons.length === 0;
+    quickEnds.replaceChildren(...buttons);
     if (!playing) {
       hand.replaceChildren();
       drawButton.hidden = true;
@@ -1111,8 +1122,13 @@
     return isYourTurn() ? engine.legalMoves(game) : [];
   }
 
+  function selectedMoves(moves) {
+    return moves.filter(move => move.tileId === selectedTileId && move.side !== null);
+  }
+
   function render(origin, cue) {
     const moves = yourMoves();
+    const choices = selectedMoves(moves);
     renderScore();
     renderSeats();
     renderStatus();
@@ -1120,10 +1136,10 @@
     const stockIcon = element('span', 'stock-icon');
     stockIcon.setAttribute('aria-hidden', 'true');
     byId('stock').replaceChildren(stockIcon, element('span', '', 'Базар · ' + game.stock.length));
-    renderRack(moves);
+    renderRack(moves, choices);
     quickChat.hidden = !isNetworkMode || networkPaused || !net?.isConnected;
     if (quickChat.hidden) quickChat.open = false;
-    renderBoard(origin, cue);
+    renderBoard(origin, cue, choices);
     positionQuickMessages();
   }
 
@@ -1310,28 +1326,30 @@
 
   function selectFromHand(id, fromKeyboard) {
     if (!isYourTurn()) return;
-    if (!game.board.root) return tryPlay(id, null);
+    const moves = yourMoves().filter(move => move.tileId === id);
+    if (moves.length === 1) return playYourMove(moves[0]);
+    if (!moves.length) {
+      selectedTileId = null;
+      if (!game.board.root) placementError = 'Первый кон открывают старшим дублем или самой тяжёлой костью.';
+      else if (game.forcedTileId && id !== game.forcedTileId) placementError = 'Сначала сыграйте подходящую кость, взятую из базара.';
+      else placementError = 'Эта кость не подходит ни к одному открытому концу.';
+      render();
+      return;
+    }
     placementError = '';
     selectedTileId = selectedTileId === id ? null : id;
     render();
     if (fromKeyboard && selectedTileId !== null) {
-      boardLayer.querySelector('button.board-end')?.focus({ preventScroll: true });
+      quickEnds.querySelector('button')?.focus({ preventScroll: true });
     }
   }
 
   function playSelected(side) {
-    if (selectedTileId !== null) tryPlay(selectedTileId, side);
+    const move = selectedMoves(yourMoves()).find(candidate => candidate.side === side);
+    if (move) playYourMove(move);
   }
 
-  function tryPlay(tileId, side) {
-    if (!isYourTurn()) return;
-    if (!yourMoves().some(move => move.tileId === tileId && move.side === side)) {
-      if (side === null) placementError = 'Первый кон открывают старшим дублем или самой тяжёлой костью.';
-      else if (game.forcedTileId && tileId !== game.forcedTileId) placementError = 'Сначала сыграйте подходящую кость, взятую из базара.';
-      else placementError = 'Эту кость нельзя поставить сюда.';
-      renderStatus();
-      return;
-    }
+  function playYourMove({ tileId, side }) {
     placementError = '';
     if (isNetworkMode) {
       selectedTileId = null;
@@ -1388,6 +1406,7 @@
 
   hand.addEventListener('keydown', cancelPlacement);
   boardLayer.addEventListener('keydown', cancelPlacement);
+  quickEnds.addEventListener('keydown', cancelPlacement);
 
   drawButton.addEventListener('click', () => {
     if (!isYourTurn() || yourMoves().length) return;
@@ -1401,7 +1420,7 @@
     }
     engine.drawOrPass(game);
     afterAction(false);
-    if (game.lastMove.kind === 'draw') hand.querySelector('button')?.focus({ preventScroll: true });
+    if (game.lastMove.kind === 'draw') selectFromHand(game.lastMove.tile.id, true);
   });
 
   continueButton.addEventListener('click', () => {

@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#153a2f">
   <title>Пятёрочка · Домино до 71</title>
-  <link rel="stylesheet" href="style.css?v=2.9.3">
+  <link rel="stylesheet" href="style.css?v=2.9.4">
   <script defer src="engine.js?v=2.0"></script>
   <script defer src="layout.js?v=2.0"></script>
   <script defer src="sound.js?v=2.7"></script>
   <script defer src="quick-messages.js?v=2.2"></script>
   <script defer src="net.js?v=2.2"></script>
-  <script defer src="app.js?v=2.9.2"></script>
+  <script defer src="app.js?v=2.9.4"></script>
 </head>
 <body>
   <div class="shell">
@@ -88,6 +88,7 @@
           <button type="button" id="draw" class="button primary" hidden>Добрать</button>
         </div>
         <div class="hand" id="hand" aria-describedby="turn-title"></div>
+        <div class="quick-ends" id="quick-ends" role="group" aria-label="Выбор ветки" hidden></div>
         <div class="round-hands" id="round-hands" hidden></div>
       </section>
       <noscript><p class="load-error">Включите JavaScript, чтобы сыграть в домино.</p></noscript>

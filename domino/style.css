@@ -307,10 +307,15 @@ button:focus-visible, summary:focus-visible, textarea:focus-visible {
   color: #dce5cf; background: #15382b80; font-size: clamp(9px, calc(var(--board-unit) * .5), 15px); font-weight: 800;
 }
 button.board-end { width: var(--end-hit-size); touch-action: manipulation; }
+button.board-end .board-end-marker {
+  width: min(40px, var(--end-hit-size), calc(var(--board-unit) * 1.25));
+  color: #402518; background: #ffbb83; border: 1px solid #ffdbb8;
+  box-shadow: 0 0 0 2px #ffbb8355, 0 3px 8px #081d1570;
+}
 button.board-end:focus-visible { outline: none; }
 button.board-end:focus-visible .board-end-marker { outline: 2px solid #fff6de; outline-offset: 2px; }
 @media (hover: hover) {
-  button.board-end:hover .board-end-marker { border-color: #e6e5cbb0; background: #234c3b; }
+  button.board-end:hover .board-end-marker { background: #ffdab2; }
 }
 .board-empty {
   position: absolute; inset: 8px; display: grid; align-content: center; justify-items: center;
@@ -615,6 +620,19 @@ button.board-end:focus-visible .board-end-marker { outline: 2px solid #fff6de; o
     0 0 18px rgba(255, 187, 131, 0.8),
     0 12px 20px rgba(5, 20, 14, 0.7);
   z-index: 6;
+}
+.quick-ends {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 6px;
+  margin-top: 5px;
+}
+.rack .quick-ends .button {
+  min-height: 44px; padding: 7px 12px; white-space: normal;
+  color: #402518; background: #ffbb83; border-color: #ffdbb8;
+  touch-action: manipulation;
+}
+.quick-ends .button:hover { background: #ffdab2; }
+@media (max-width: 495px) {
+  .quick-ends { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 dialog {
