@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#153a2f">
+  <title>Пятёрочка · Домино до 71</title>
+  <link rel="stylesheet" href="style.css?v=2.2">
+  <script defer src="engine.js?v=2.0"></script>
+  <script defer src="layout.js?v=2.0"></script>
+  <script defer src="quick-messages.js?v=2.2"></script>
+  <script defer src="net.js?v=2.2"></script>
+  <script defer src="app.js?v=2.2"></script>
+</head>
+<body>
+  <div class="shell">
+    <header class="masthead">
+      <div class="identity">
+        <div class="brand-tile" aria-hidden="true"><i></i><i></i></div>
+        <div>
+          <p>Домино до 71</p>
+          <h1>Пятёрочка</h1>
+        </div>
+      </div>
+      <div class="scoreboard" id="scoreboard" aria-label="Счёт партии"></div>
+      <div class="mode-control" id="mode-menu" role="group" aria-label="Режим партии">
+        <button type="button" data-mode="2" aria-pressed="true">1×1</button>
+        <button type="button" data-mode="3" aria-pressed="false">Втроём</button>
+        <button type="button" data-mode="4" aria-pressed="false">2×2</button>
+      </div>
+      <div class="utilities">
+        <button type="button" class="button primary" id="online-open">Онлайн игра</button>
+        <button type="button" class="button secondary" id="rules-open">Правила</button>
+        <button type="button" class="button secondary" id="restart">Новая партия</button>
+      </div>
+    </header>
+
+    <main class="table" aria-label="Игровой стол">
+      <div class="table-head">
+        <p id="round-label">Кон № 1</p>
+        <ul class="seats" id="seats" aria-label="Соперники и напарник"></ul>
+      </div>
+
+      <div class="board-view" id="board-view" role="region" aria-label="Расположение костей на столе">
+        <div id="board-layer" class="board-layer"></div>
+      </div>
+
+      <div class="table-foot">
+        <div class="stock-area">
+          <div class="stock" id="stock"></div>
+        </div>
+        <section class="turn-card" id="turn-card" aria-label="Ход">
+          <div id="turn-live" role="status" aria-live="polite" aria-atomic="true">
+            <span class="turn-kicker"><i></i><span id="turn-label">Ход</span></span>
+            <h2 id="turn-title">Готовим стол</h2>
+            <p id="turn-detail"></p>
+          </div>
+          <button type="button" id="continue" class="button primary" hidden>Следующий кон</button>
+        </section>
+        <div class="end-total">Сумма концов <strong id="end-total">0</strong></div>
+      </div>
+
+      <section class="rack" aria-labelledby="rack-label">
+        <div class="rack-head">
+          <div class="rack-label">
+            <h2 id="rack-label">Ваша рука</h2>
+            <div class="self-seat" id="self-seat"></div>
+          </div>
+          <p id="round-remainder-total" class="round-remainder-total" hidden></p>
+          <details class="quick-chat" id="quick-chat" hidden>
+            <summary>Реплики</summary>
+            <div class="quick-chat-menu" id="quick-chat-menu" role="group" aria-label="Быстрые реплики"></div>
+          </details>
+          <button type="button" id="draw" class="button primary" hidden>Добрать</button>
+        </div>
+        <div class="hand" id="hand" aria-describedby="turn-title"></div>
+        <div class="round-hands" id="round-hands" hidden></div>
+        <div class="quick-ends" id="quick-ends" hidden aria-label="Выбор ветки"></div>
+      </section>
+      <noscript><p class="load-error">Включите JavaScript, чтобы сыграть в домино.</p></noscript>
+    </main>
+  </div>
+
+  <dialog id="rules" aria-labelledby="rules-title">
+    <div class="dialog-head">
+      <h2 id="rules-title">Правила Пятёрочки</h2>
+      <form method="dialog"><button type="submit" class="button secondary" aria-label="Закрыть правила">Закрыть</button></form>
+    </div>
+    <ul class="rules-list">
+      <li>Подбирайте кость с числом на открытом конце. Если подходит только одна ветка, кость сразу ляжет на стол. При нескольких подходящих ветках выберите одну.</li>
+      <li>Если открыты дубль 5–5 и другая свободная пятёрка, к дублю ходить нельзя. Выберите любую другую свободную пятёрку. Если пятёрка доступна только на дубле, к нему можно ходить.</li>
+      <li>Первый дубль становится домом. После присоединения костей слева и справа открываются две боковые ветки. Пустые ветки в сумму концов не входят.</li>
+      <li>За первую кость кона два очка даёт только дубль 5–5. При счёте 70 он очков не прибавляет. После первого хода сумма концов, кратная пяти, даёт одно очко за каждые пять точек. Партия заканчивается сразу при достижении 71.</li>
+      <li>При отсутствии подходящей кости доберите из базара. Если он пуст, пасуйте. Полный круг пасов завершает кон «рыбой».</li>
+      <li>В первом кону открывают старшим розданным дублем или самой тяжёлой костью, если все дубли в базаре. Каждый следующий кон открывает игрок по часовой стрелке от предыдущего ставщика. Он может выбрать любую кость.</li>
+      <li>При выходе в бонус идут остатки всех остальных. При «рыбе» выигрывает игрок с наименьшим остатком. В 1×1 и втроём его остаток вычитают из суммы остальных. В 2×2 складывают остатки трёх остальных игроков, включая напарника победителя. Итоговую сумму округляют вверх до кратного пяти и делят на пять. Перевод рядом с каждой рукой показан для справки. При ничьей за минимум бонуса нет.</li>
+      <li>Пас не лишает бонуса за выход. Одна оставшаяся кость 0–0 считается за десять точек в режимах 1×1 и втроём. В 2×2 она всегда даёт ноль.</li>
+      <li>В 2×2 очки общие с напарником напротив. Его остаток учитывается при подсчёте бонуса так же, как остатки соперников.</li>
+    </ul>
+    <details class="log-details">
+      <summary>Журнал партий</summary>
+      <p id="history-status"></p>
+      <textarea id="match-history" readonly rows="7" aria-label="Кто сделал первый ход в каждом кону"></textarea>
+      <div style="margin: 8px 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+        <button type="button" id="copy-telemetry" class="button secondary" style="min-height: 32px; padding: 4px 10px; font-size: 0.78rem;">Скопировать лог эксперимента (JSON)</button>
+        <span id="telemetry-copy-status" style="font-size: 0.75rem; color: #ad4b2e; font-weight: 700;"></span>
+      </div>
+      <details class="log-details">
+        <summary>События теста</summary>
+        <textarea id="events-log" readonly rows="5" aria-label="События игрового журнала"></textarea>
+      </details>
+    </details>
+  </dialog>
+
+  <dialog id="lobby-dialog" class="lobby-dialog" aria-labelledby="lobby-title">
+    <div class="dialog-head">
+      <h2 id="lobby-title">Сетевая игра 2×2</h2>
+      <form method="dialog"><button type="submit" class="button secondary" id="lobby-close" aria-label="Закрыть">Закрыть</button></form>
+    </div>
+
+    <!-- View 1: Connect / Create Screen -->
+    <div id="lobby-welcome" class="lobby-section">
+      <div class="lobby-form-row">
+        <label for="player-nickname">Ваше имя:</label>
+        <input type="text" id="player-nickname" maxlength="16" placeholder="Имя" value="Игрок">
+      </div>
+      <div class="lobby-actions-grid">
+        <div class="lobby-card">
+          <h3>Создать комнату</h3>
+          <p>Создайте игру на 4 человек и отправьте ссылку друзьям.</p>
+          <button type="button" id="btn-create-room" class="button primary">Создать стол 2×2</button>
+        </div>
+        <div class="lobby-card">
+          <h3>Войти по коду</h3>
+          <p>Введите 4-значный код комнаты от друга.</p>
+          <div style="display: flex; gap: 6px;">
+            <input type="text" id="room-code-input" maxlength="4" placeholder="КОД" style="text-transform: uppercase; width: 90px; text-align: center; font-weight: 800; font-size: 1.1rem;">
+            <button type="button" id="btn-join-room" class="button secondary">Войти</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- View 2: Room Lobby Screen (4 seats) -->
+    <div id="lobby-room" class="lobby-section" hidden>
+      <div class="room-header">
+        <div>
+          <span style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 800;">Комната:</span>
+          <strong id="display-room-code" class="room-code">----</strong>
+        </div>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <button type="button" id="btn-copy-link" class="button secondary" style="font-size: 0.78rem;">Скопировать ссылку</button>
+          <span id="copy-link-status" style="font-size: 0.75rem; color: #2e8b57; font-weight: 700;"></span>
+        </div>
+      </div>
+
+      <p style="font-size: 0.8rem; color: var(--muted); margin: 0; text-align: center;">
+        Нажмите на свободное кресло, чтобы занять его. Напарники сидят строго друг напротив друга!
+      </p>
+
+      <!-- 4 Seats visual table -->
+      <div class="lobby-table-preview">
+        <!-- North: Team 1 (Seat 2) -->
+        <div class="seat-card seat-north" id="seat-card-2" data-seat="2">
+          <span class="team-badge team-1">Команда 1</span>
+          <strong class="seat-player-name">Свободно</strong>
+          <span class="seat-status-pill">Ожидание</span>
+          <div class="seat-buttons">
+            <button type="button" class="seat-take-btn button secondary" style="padding: 2px 6px; font-size: 0.75rem;">Сесть</button>
+            <button type="button" class="seat-bot-btn button secondary" style="padding: 2px 6px; font-size: 0.75rem;">+ Бот</button>
+          </div>
+        </div>
+
+        <!-- West: Team 2 (Seat 1) -->
+        <div class="seat-card seat-west" id="seat-card-1" data-seat="1">
+          <span class="team-badge team-2">Команда 2</span>
+          <strong class="seat-player-name">Свободно</strong>
+          <span class="seat-status-pill">Ожидание</span>
+          <div class="seat-buttons">
+            <button type="button" class="seat-take-btn button secondary" style="padding: 2px 6px; font-size: 0.75rem;">Сесть</button>
+            <button type="button" class="seat-bot-btn button secondary" style="padding: 2px 6px; font-size: 0.75rem;">+ Бот</button>
+          </div>
+        </div>
+
+        <!-- Center felt icon -->
+        <div class="lobby-felt-center">
+          <span style="font-size: 0.82rem; font-weight: 800; color: #a4cca2;">2×2</span>
+        </div>
+
+        <!-- East: Team 2 (Seat 3) -->
+        <div class="seat-card seat-east" id="seat-card-3" data-seat="3">
+          <span class="team-badge team-2">Команда 2</span>
+          <strong class="seat-player-name">Свободно</strong>
+          <span class="seat-status-pill">Ожидание</span>
+          <div class="seat-buttons">
+            <button type="button" class="seat-take-btn button secondary" style="padding: 2px 6px; font-size: 0.75rem;">Сесть</button>
+            <button type="button" class="seat-bot-btn button secondary" style="padding: 2px 6px; font-size: 0.75rem;">+ Бот</button>
+          </div>
+        </div>
+
+        <!-- South: Team 1 (Seat 0) -->
+        <div class="seat-card seat-south" id="seat-card-0" data-seat="0">
+          <span class="team-badge team-1">Команда 1</span>
+          <strong class="seat-player-name">Свободно</strong>
+          <span class="seat-status-pill">Ожидание</span>
+          <div class="seat-buttons">
+            <button type="button" class="seat-take-btn button secondary" style="padding: 2px 6px; font-size: 0.75rem;">Сесть</button>
+            <button type="button" class="seat-bot-btn button secondary" style="padding: 2px 6px; font-size: 0.75rem;">+ Бот</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="lobby-footer-controls">
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+          <button type="button" id="btn-random-teams" class="button secondary">🎲 Случайные пары</button>
+          <button type="button" id="btn-toggle-ready" class="button secondary">Я готов!</button>
+          <button type="button" id="btn-start-game" class="button primary" disabled>Начать партию</button>
+        </div>
+        <button type="button" id="btn-leave-room" class="button secondary" style="color: #b33924;">Покинуть стол</button>
+      </div>
+      <p id="lobby-status-msg" style="font-size: 0.8rem; color: var(--muted); margin: 0; text-align: center;"></p>
+    </div>
+    <div id="lobby-error" class="lobby-error" role="alert" hidden></div>
+  </dialog>
+</body>
+</html>

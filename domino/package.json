@@ -1,0 +1,17 @@
+{
+  "name": "domino-fives-71",
+  "version": "1.0.0",
+  "description": "HTML5 Domino 71 / All Fives browser game with multiplayer and bots",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test *.test.cjs"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
