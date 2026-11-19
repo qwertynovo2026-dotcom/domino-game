@@ -13,7 +13,7 @@ const engine = globalThis.Domino71;
 
 const PORT = Number(process.env.PORT ?? 3000);
 const HOST = process.env.HOST || '0.0.0.0';
-const browserFiles = new Set(['index.html', 'style.css', 'engine.js', 'layout.js', 'quick-messages.js', 'net.js', 'app.js']);
+const browserFiles = new Set(['index.html', 'style.css', 'engine.js', 'layout.js', 'quick-messages.js', 'net.js', 'sound.js', 'app.js']);
 const quickMessages = globalThis.DominoQuickMessages;
 const quickMessageInterval = 1000;
 

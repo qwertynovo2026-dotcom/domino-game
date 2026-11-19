@@ -532,8 +532,10 @@
   function finishFlight() {
     const { cue, scoringInfo } = activeFlight;
     clearFlight();
+    globalThis.DominoSound?.playTilePlace();
     if (scoringInfo) {
       showTileScoreBubble(scoringInfo.piece, scoringInfo.points, scoringInfo.unit);
+      setTimeout(() => globalThis.DominoSound?.playScore(scoringInfo.points), 80);
     }
     if (cue) showMoveCue(cue);
   }
@@ -791,8 +793,19 @@
     }
     const cue = played ? { seat: move.seat, text: seatActions[move.seat].text, points: move.points }
       : move.kind === 'pass' ? { seat: move.seat, text: 'Стучу' } : null;
-    if (game.phase !== 'playing') record('round_end');
+    if (game.phase !== 'playing') {
+      record('round_end');
+      setTimeout(() => globalThis.DominoSound?.playFanfare(game.phase === 'match-over'), 400);
+    }
+    if (!played) {
+      if (move.kind === 'pass') globalThis.DominoSound?.playKnock();
+      else if (move.kind === 'draw') globalThis.DominoSound?.playDraw();
+    }
     render(origin, cue);
+    if (played && !activeFlight) {
+      globalThis.DominoSound?.playTilePlace();
+      if (move.points > 0) setTimeout(() => globalThis.DominoSound?.playScore(move.points), 180);
+    }
     if (game.phase !== 'playing') continueButton.focus({ preventScroll: true });
     scheduleBot();
   }
@@ -857,10 +870,14 @@
   drawButton.addEventListener('click', () => {
     if (game.phase !== 'playing' || game.turn !== 0 || yourMoves().length) return;
     if (isNetworkMode) {
+      if (game.stock.length) globalThis.DominoSound?.playDraw();
       globalThis.DominoNet?.drawOrPass();
       return;
     }
-    if (game.stock.length) showMoveCue({ seat: 0, text: 'Иду на базар' });
+    if (game.stock.length) {
+      globalThis.DominoSound?.playDraw();
+      showMoveCue({ seat: 0, text: 'Иду на базар' });
+    }
     engine.drawOrPass(game);
     const moves = yourMoves();
     if (moves.length === 1) {
@@ -922,6 +939,22 @@
       startMatch(targetMode);
     }
   });
+
+  const soundToggle = byId('sound-toggle');
+  if (soundToggle) {
+    const updateSoundIcon = () => {
+      const on = globalThis.DominoSound?.isEnabled() ?? true;
+      soundToggle.textContent = on ? '🔊' : '🔇';
+      soundToggle.setAttribute('aria-label', on ? 'Звук: Включен' : 'Звук: Выключен');
+      soundToggle.title = on ? 'Звук: Вкл (нажмите, чтобы выключить)' : 'Звук: Выкл (нажмите, чтобы включить)';
+      soundToggle.classList.toggle('muted', !on);
+    };
+    updateSoundIcon();
+    soundToggle.addEventListener('click', () => {
+      globalThis.DominoSound?.toggleMute();
+      updateSoundIcon();
+    });
+  }
 
   byId('restart').addEventListener('click', () => {
     if (isNetworkMode) {
@@ -1278,7 +1311,17 @@
           if (newMove && !wasPaused) {
             if (activeFlight) finishFlight();
             cue = { seat: relSeat, ...seatActions[relSeat] };
-            if (sGame.lastMove.kind === 'play') origin = flightOrigin(relSeat, sGame.lastMove.tile.id);
+            if (sGame.lastMove.kind === 'play') {
+              origin = flightOrigin(relSeat, sGame.lastMove.tile.id);
+              if (!origin) {
+                globalThis.DominoSound?.playTilePlace();
+                if (sGame.lastMove.points > 0) setTimeout(() => globalThis.DominoSound?.playScore(sGame.lastMove.points), 180);
+              }
+            } else if (sGame.lastMove.kind === 'pass') {
+              globalThis.DominoSound?.playKnock();
+            } else if (sGame.lastMove.kind === 'draw') {
+              globalThis.DominoSound?.playDraw();
+            }
           }
         }
 
@@ -1308,6 +1351,9 @@
         };
 
         render(origin, cue);
+        if (!wasPaused && newMove && (sGame.phase === 'round-over' || sGame.phase === 'match-over')) {
+          setTimeout(() => globalThis.DominoSound?.playFanfare(sGame.phase === 'match-over'), 400);
+        }
       });
 
       net.on('connected', connected => {
