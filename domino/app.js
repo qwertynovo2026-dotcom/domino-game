@@ -32,8 +32,9 @@
   const quickMessages = globalThis.DominoQuickMessages ?? {};
   const quickBubbles = new Map();
   const continueButton = byId('continue');
-  const quickEnds = byId('quick-ends');
   const modeMenu = byId('mode-menu');
+  const tableMenuToggle = byId('table-menu-toggle');
+  const tableControls = byId('table-controls');
   const rules = byId('rules');
   const log = byId('events-log');
   const historyText = byId('match-history');
@@ -92,6 +93,8 @@
   let currentJournal;
   let matchNumber = Math.max(0, ...recentMatches().map(entry => entry.number));
   let selectedTileId = null;
+  let placementError = '';
+  let lastPlacedTileId = null;
   let botTimer;
   let moveCue = null;
   let seatActions = [];
@@ -611,7 +614,10 @@
     }, 40);
   }
 
-  historyOpenBtn?.addEventListener('click', () => openHistoryDialog());
+  historyOpenBtn?.addEventListener('click', () => {
+    closeTableMenu(true);
+    openHistoryDialog();
+  });
   turnHistoryBtn?.addEventListener('click', () => {
     const filter = (game?.phase === 'match-over') ? 'all' : (game?.roundNumber ?? 'all');
     openHistoryDialog(filter);
@@ -715,12 +721,13 @@
     return name + ' · ' + move.tile.a + '–' + move.tile.b + (move.points ? ' · +' + move.points : '') + '.';
   }
 
-  function renderStatus(moves) {
+  function renderStatus() {
     const playing = game.phase === 'playing';
     const yourTurn = playing && game.turn === 0;
     const turnCard = byId('turn-card');
     turnCard.classList.toggle('is-your-turn', yourTurn);
     turnDetail.classList.toggle('sr-only', pendingDraw !== null);
+    turnDetail.classList.toggle('placement-error', yourTurn && Boolean(placementError));
     if (isNetworkMode && networkPaused) {
       byId('turn-label').textContent = 'Онлайн';
       turnTitle.textContent = 'Соединение прервано';
@@ -731,13 +738,11 @@
 
     if (playing) {
       byId('turn-label').textContent = yourTurn ? 'Ваш ход' : 'Ход соперника';
-      turnTitle.textContent = yourTurn
-        ? (selectedTileId ? 'Куда поставить?' : moves.length ? 'Выберите кость' : game.stock.length ? 'Возьмите из базара' : 'Пасуйте')
-        : seatName(game.turn) + ' ходит';
+      turnTitle.textContent = yourTurn ? (selectedTileId ? 'Выберите конец цепочки' : 'Ваш ход') : seatName(game.turn) + ' ходит';
       if (!yourTurn && game.playerCount === 4 && game.turn === 2) {
         byId('turn-label').textContent = 'Ход напарника';
       }
-      turnDetail.textContent = pendingDraw !== null ? 'Иду на базар.' : lastMoveText() ||
+      turnDetail.textContent = (yourTurn && placementError) || (pendingDraw !== null ? 'Иду на базар.' : lastMoveText()) ||
         (game.starter === 0 ? 'Вы открываете кон.' : seatName(game.starter) + ' открывает кон.');
       continueButton.hidden = true;
       if (turnHistoryBtn) turnHistoryBtn.hidden = true;
@@ -966,12 +971,13 @@
     };
   }
 
-  function renderBoard(choices = [], origin, cue) {
+  function renderBoard(origin, cue) {
     if (!game) return;
     const { board } = game;
     const width = boardView.clientWidth;
     const height = boardView.clientHeight;
     if (!board.root) {
+      lastPlacedTileId = null;
       const empty = element('div', 'board-empty');
       const marker = element('span', '', '⁙');
       marker.setAttribute('aria-hidden', 'true');
@@ -983,11 +989,15 @@
 
     const { unit, pieces, tips } = layout.fit(board, engine.openEnds(board), width, height);
     boardLayer.style.setProperty('--board-unit', unit + 'px');
+    const lastMove = game.lastMove;
+    if (lastMove?.kind === 'play') lastPlacedTileId = lastMove.tile.id;
+    const focusedSide = boardLayer.contains(document.activeElement) ? document.activeElement.dataset.side : undefined;
     const children = [];
     let destination;
     for (const piece of pieces) {
       const node = domino(piece.a, piece.b, piece.vertical);
       node.classList.add('board-piece');
+      node.classList.toggle('last-placed', piece.tile.id === lastPlacedTileId);
       if (board.spinner && piece.tile === board.root) {
         node.classList.add('house');
         node.setAttribute('aria-label', 'Дом, ' + piece.a + '–' + piece.b);
@@ -997,13 +1007,21 @@
       position(node, piece.x, piece.y);
       children.push(node);
     }
+    const placing = selectedTileId !== null && isYourTurn();
     for (const tip of tips) {
-      const active = choices.some(choice => choice.side === tip.side);
-      const node = element(active ? 'button' : 'span', 'board-end', tip.pip);
+      const node = element(placing ? 'button' : 'span', 'board-end');
+      node.append(element('span', 'board-end-marker', tip.pip));
       const label = directions[tip.side] + ', ' + tip.pip;
-      if (active) {
+      if (placing) {
         node.type = 'button';
         node.dataset.side = tip.side;
+        // Expand the transparent tap area, without covering another end or escaping the board.
+        let hitSize = Math.min(44, 2 * Math.min(tip.x, width - tip.x, tip.y, height - tip.y));
+        for (const other of tips) {
+          if (other === tip) continue;
+          hitSize = Math.min(hitSize, Math.max(Math.abs(tip.x - other.x), Math.abs(tip.y - other.y)) - 1);
+        }
+        node.style.setProperty('--end-hit-size', Math.max(0, hitSize) + 'px');
         node.setAttribute('aria-label', 'Поставить кость. ' + label);
         node.addEventListener('click', () => playSelected(tip.side));
       } else {
@@ -1013,7 +1031,7 @@
       children.push(node);
     }
     boardLayer.replaceChildren(...children);
-    const lastMove = game.lastMove;
+    if (focusedSide !== undefined) boardLayer.querySelector(`[data-side="${focusedSide}"]`)?.focus({ preventScroll: true });
     const isScoringMove = lastMove && lastMove.kind === 'play' && lastMove.points > 0;
     const scoringPiece = isScoringMove ? pieces.find(p => p.tile.id === lastMove.tile.id) : null;
     const moveKey = isScoringMove ? `${game.roundNumber}-${lastMove.tile.id}-${lastMove.points}-${game.board.arms.reduce((s, a) => s + a.length, 0)}` : null;
@@ -1032,9 +1050,9 @@
     positionMoveCue();
   }
 
-  function renderRack(moves, choices) {
+  function renderRack(moves) {
     const playing = game.phase === 'playing';
-    const yourTurn = playing && game.turn === 0 && !(isNetworkMode && networkPaused);
+    const yourTurn = isYourTurn();
     const rackLabel = byId('rack-label');
     rackLabel.textContent = playing ? 'Ваша рука' : 'Остатки на руках';
     rackLabel.classList.toggle('sr-only', playing);
@@ -1043,7 +1061,6 @@
     roundRemainderTotal.hidden = playing;
     if (!playing) {
       hand.replaceChildren();
-      quickEnds.hidden = true;
       drawButton.hidden = true;
       const { bonus, bonusBase, remainders, seat, type } = game.result;
       const total = remainders.reduce((sum, value) => sum + value, 0);
@@ -1071,58 +1088,42 @@
     }
     roundHands.replaceChildren();
 
-    const available = new Set(moves.map(move => move.tileId));
     const focusedId = hand.contains(document.activeElement) ? document.activeElement.dataset.tileId : null;
     const nodes = game.hands[0].map(tile => {
       const node = domino(tile.a, tile.b, true, 'button');
       node.dataset.tileId = tile.id;
-      node.disabled = !available.has(tile.id);
+      node.disabled = !yourTurn;
       node.setAttribute('aria-pressed', String(tile.id === selectedTileId));
-      node.addEventListener('click', () => selectFromHand(tile.id));
+      node.addEventListener('click', event => selectFromHand(tile.id, event.detail === 0));
       return node;
     });
     hand.replaceChildren(...nodes);
     if (focusedId) nodes.find(node => node.dataset.tileId === focusedId && !node.disabled)?.focus({ preventScroll: true });
     drawButton.hidden = !yourTurn || moves.length > 0;
     drawButton.textContent = game.stock.length ? 'Добрать' : 'Пас';
-    const buttons = choices.map(({ side }) => {
-      const { pip } = engine.openEnds(game.board).find(end => end.side === side);
-      const button = element('button', '', directions[side] + ' · ' + pip);
-      button.type = 'button';
-      button.addEventListener('click', () => playSelected(side));
-      return button;
-    });
-    quickEnds.hidden = buttons.length === 0;
-    quickEnds.replaceChildren(...buttons);
+  }
+
+  function isYourTurn() {
+    return game?.phase === 'playing' && game.turn === 0 && !(isNetworkMode && networkPaused);
   }
 
   function yourMoves() {
-    if (!game || (isNetworkMode && networkPaused)) return [];
-    return game.turn === 0 ? engine.legalMoves(game) : [];
-  }
-
-  function selectedMoves(moves = yourMoves()) {
-    if (!game) return [];
-    return moves.filter(move => move.tileId === selectedTileId && move.side !== null);
+    return isYourTurn() ? engine.legalMoves(game) : [];
   }
 
   function render(origin, cue) {
     const moves = yourMoves();
-    const choices = selectedMoves(moves);
     renderScore();
     renderSeats();
-    renderStatus(moves);
-    const total = engine.endTotal(game.board);
+    renderStatus();
     byId('round-label').textContent = 'Кон № ' + game.roundNumber;
-    byId('end-total').textContent = total;
-    byId('end-total').classList.toggle('scoring', game.lastMove?.kind === 'play' && game.lastMove.points > 0);
     const stockIcon = element('span', 'stock-icon');
     stockIcon.setAttribute('aria-hidden', 'true');
     byId('stock').replaceChildren(stockIcon, element('span', '', 'Базар · ' + game.stock.length));
-    renderRack(moves, choices);
+    renderRack(moves);
     quickChat.hidden = !isNetworkMode || networkPaused || !net?.isConnected;
     if (quickChat.hidden) quickChat.open = false;
-    renderBoard(choices, origin, cue);
+    renderBoard(origin, cue);
     positionQuickMessages();
   }
 
@@ -1153,9 +1154,8 @@
       } else if (game.stock.length) {
         pendingDraw = seat;
         renderSeats();
-        renderStatus([]);
+        renderStatus();
         showMoveCue({ seat, text: 'Иду на базар' });
-        recordHistoryDraw(seat, 1);
         botTimer = setTimeout(drawOrPass, botDrawPause);
       } else {
         drawOrPass();
@@ -1263,14 +1263,15 @@
 
   function afterAction(played, origin) {
     selectedTileId = null;
+    placementError = '';
     const move = game.lastMove;
     if (played) {
       recordHistoryPlay(move.seat, move.tile, move.side, move.points, engine.endTotal(game.board));
     } else {
       if (move.kind === 'pass') {
-        recordHistoryPass(move.seat);
+        recordHistoryPass(move.seat, move.drawn);
       } else if (move.kind === 'draw') {
-        recordHistoryDraw(move.seat, 1);
+        recordHistoryDraw(move.seat, move.drawn);
       }
     }
     seatActions[move.seat] = played
@@ -1307,30 +1308,37 @@
     scheduleBot();
   }
 
-  function selectFromHand(id) {
-    const moves = yourMoves().filter(move => move.tileId === id);
-    if (moves.length === 1) {
-      if (isNetworkMode) {
-        selectedTileId = null;
-        globalThis.DominoNet?.playTile(id, moves[0].side);
-        return;
-      }
-      playWithFlight(id, moves[0].side);
-    } else if (moves.length > 1) {
-      selectedTileId = selectedTileId === id ? null : id;
-      render();
+  function selectFromHand(id, fromKeyboard) {
+    if (!isYourTurn()) return;
+    if (!game.board.root) return tryPlay(id, null);
+    placementError = '';
+    selectedTileId = selectedTileId === id ? null : id;
+    render();
+    if (fromKeyboard && selectedTileId !== null) {
+      boardLayer.querySelector('button.board-end')?.focus({ preventScroll: true });
     }
   }
 
   function playSelected(side) {
-    const move = selectedMoves().find(candidate => candidate.side === side);
-    if (!move) return;
-    if (isNetworkMode) {
-      selectedTileId = null;
-      globalThis.DominoNet?.playTile(move.tileId, move.side);
+    if (selectedTileId !== null) tryPlay(selectedTileId, side);
+  }
+
+  function tryPlay(tileId, side) {
+    if (!isYourTurn()) return;
+    if (!yourMoves().some(move => move.tileId === tileId && move.side === side)) {
+      if (side === null) placementError = 'Первый кон открывают старшим дублем или самой тяжёлой костью.';
+      else if (game.forcedTileId && tileId !== game.forcedTileId) placementError = 'Сначала сыграйте подходящую кость, взятую из базара.';
+      else placementError = 'Эту кость нельзя поставить сюда.';
+      renderStatus();
       return;
     }
-    playWithFlight(move.tileId, move.side);
+    placementError = '';
+    if (isNetworkMode) {
+      selectedTileId = null;
+      globalThis.DominoNet?.playTile(tileId, side);
+      return;
+    }
+    playWithFlight(tileId, side);
   }
 
   function startMatch(players) {
@@ -1340,6 +1348,7 @@
     clearQuickMessages();
     clearTileScoreBubble();
     lastScoredMoveKey = null;
+    lastPlacedTileId = null;
     matchStartTime = Date.now();
     roundStartTime = matchStartTime;
     game = engine.createGame(players);
@@ -1353,6 +1362,7 @@
     memoryHistory.set(key, currentJournal);
     if (memoryHistory.size > historyLimit) memoryHistory.delete(memoryHistory.keys().next().value);
     selectedTileId = null;
+    placementError = '';
     seatActions = [];
     record('round_start');
     if (historyStorage) {
@@ -1367,30 +1377,31 @@
     scheduleBot();
   }
 
+  function cancelPlacement(event) {
+    if (event.key !== 'Escape' || selectedTileId === null) return;
+    const tileId = selectedTileId;
+    selectedTileId = null;
+    placementError = '';
+    render();
+    hand.querySelector(`[data-tile-id="${tileId}"]`)?.focus({ preventScroll: true });
+  }
+
+  hand.addEventListener('keydown', cancelPlacement);
+  boardLayer.addEventListener('keydown', cancelPlacement);
+
   drawButton.addEventListener('click', () => {
-    if (game.phase !== 'playing' || game.turn !== 0 || yourMoves().length) return;
+    if (!isYourTurn() || yourMoves().length) return;
     if (isNetworkMode) {
       if (game.stock.length) globalThis.DominoSound?.playDraw();
       globalThis.DominoNet?.drawOrPass();
       return;
     }
     if (game.stock.length) {
-      globalThis.DominoSound?.playDraw();
       showMoveCue({ seat: 0, text: 'Иду на базар' });
-      recordHistoryDraw(0, 1);
     }
     engine.drawOrPass(game);
-    const moves = yourMoves();
-    if (moves.length === 1) {
-      playWithFlight(moves[0].tileId, moves[0].side);
-    } else {
-      afterAction(false);
-      if (moves.length > 1) {
-        selectedTileId = moves[0].tileId;
-        render();
-        quickEnds.querySelector('button')?.focus({ preventScroll: true });
-      }
-    }
+    afterAction(false);
+    if (game.lastMove.kind === 'draw') hand.querySelector('button')?.focus({ preventScroll: true });
   });
 
   continueButton.addEventListener('click', () => {
@@ -1418,11 +1429,13 @@
       clearMoveCue();
       clearTileScoreBubble();
       lastScoredMoveKey = null;
+      lastPlacedTileId = null;
       record('round_continue');
       engine.nextRound(game);
       ensureRoundHistory(game.roundNumber, game.starter);
       record('round_start');
       selectedTileId = null;
+      placementError = '';
       seatActions = [];
       render();
       scheduleBot();
@@ -1431,6 +1444,7 @@
 
   modeMenu.addEventListener('click', event => {
     const button = event.target.closest('button[data-mode]');
+    if (button) closeTableMenu(true);
     if (button && Number(button.dataset.mode) !== game.playerCount) {
       if (isNetworkMode) {
         globalThis.DominoNet?.leave();
@@ -1461,6 +1475,7 @@
   }
 
   byId('restart').addEventListener('click', () => {
+    closeTableMenu(true);
     if (isNetworkMode) {
       globalThis.DominoNet?.leave();
       isNetworkMode = false;
@@ -1476,6 +1491,7 @@
   });
 
   byId('rules-open').addEventListener('click', () => {
+    closeTableMenu(true);
     record('rules_opened', { round: game.roundNumber, phase: game.phase });
     const hadPendingDraw = pendingDraw !== null;
     cancelBotAction();
@@ -1483,12 +1499,30 @@
     clearMoveCue();
     if (hadPendingDraw) {
       renderSeats();
-      renderStatus(yourMoves());
+      renderStatus();
     }
     refreshJournal();
     rules.showModal();
   });
   rules.addEventListener('close', scheduleBot);
+
+  function closeTableMenu(restoreFocus = false) {
+    if (tableMenuToggle.getAttribute('aria-expanded') !== 'true') return;
+    tableMenuToggle.setAttribute('aria-expanded', 'false');
+    if (restoreFocus) tableMenuToggle.focus({ preventScroll: true });
+  }
+
+  tableMenuToggle.addEventListener('click', () => {
+    if (tableMenuToggle.getAttribute('aria-expanded') === 'true') closeTableMenu();
+    else tableMenuToggle.setAttribute('aria-expanded', 'true');
+  });
+  matchMedia('(max-width: 810px)').addEventListener('change', () => closeTableMenu());
+  document.addEventListener('click', event => {
+    if (!tableControls.contains(event.target) && !tableMenuToggle.contains(event.target)) closeTableMenu();
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && (tableControls.contains(event.target) || tableMenuToggle === event.target)) closeTableMenu(true);
+  });
 
   const copyTelemetryBtn = byId('copy-telemetry');
   const copyStatus = byId('telemetry-copy-status');
@@ -1572,6 +1606,7 @@
 
   if (onlineOpenBtn && lobbyDialog) {
     onlineOpenBtn.addEventListener('click', () => {
+      closeTableMenu(true);
       cancelBotAction();
       clearFlight();
       clearMoveCue();
@@ -1780,6 +1815,9 @@
 
       net.on('gameState', (msg) => {
         const sGame = msg.game;
+        const mySeat = msg.seat;
+        const toRel = (absSeat) => (absSeat - mySeat + 4) % 4;
+        const toAbs = (relSeat) => (relSeat + mySeat) % 4;
         const sameRoom = isNetworkMode && networkSnapshot?.room === msg.roomId;
         const sameRound = sameRoom && networkSnapshot.match === sGame.matchNumber &&
           networkSnapshot.round === sGame.roundNumber;
@@ -1796,20 +1834,19 @@
           if (!sameRoom) clearQuickMessages();
           clearTileScoreBubble();
           lastScoredMoveKey = null;
+          lastPlacedTileId = null;
           seatActions = [];
         }
-        if (!sameRound || networkSnapshot.move !== sGame.moveNumber || wasPaused) selectedTileId = null;
+        if (!sameRound || networkSnapshot.move !== sGame.moveNumber || wasPaused) {
+          selectedTileId = null;
+          placementError = '';
+        }
         networkPaused = false;
         networkSnapshot = { room: msg.roomId, match: sGame.matchNumber, round: sGame.roundNumber, move: sGame.moveNumber };
         isNetworkMode = true;
         try {
           if (lobbyDialog?.open) lobbyDialog.close();
         } catch {}
-
-        const mySeat = msg.seat;
-
-        const toRel = (absSeat) => (absSeat - mySeat + 4) % 4;
-        const toAbs = (relSeat) => (relSeat + mySeat) % 4;
 
         netPlayerNames = [
           sGame.otherHands[mySeat]?.name ? `Вы (${sGame.otherHands[mySeat].name})` : 'Вы',
@@ -1905,6 +1942,7 @@
         networkPaused = true;
         clearQuickMessages();
         selectedTileId = null;
+        placementError = '';
         render();
       });
 
@@ -1922,7 +1960,7 @@
   }
 
   new ResizeObserver(() => {
-    if (game) renderBoard(selectedMoves());
+    if (game) renderBoard();
   }).observe(boardView);
 
   record('session_init', {

@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#153a2f">
   <title>Пятёрочка · Домино до 71</title>
-  <link rel="stylesheet" href="style.css?v=2.9.1">
+  <link rel="stylesheet" href="style.css?v=2.9.2">
   <script defer src="engine.js?v=2.0"></script>
   <script defer src="layout.js?v=2.0"></script>
   <script defer src="sound.js?v=2.7"></script>
   <script defer src="quick-messages.js?v=2.2"></script>
   <script defer src="net.js?v=2.2"></script>
-  <script defer src="app.js?v=2.9.1"></script>
+  <script defer src="app.js?v=2.9.2"></script>
 </head>
 <body>
   <div class="shell">
@@ -24,25 +24,28 @@
         </div>
       </div>
       <div class="scoreboard" id="scoreboard" aria-label="Счёт партии"></div>
-      <div class="mode-control" id="mode-menu" role="group" aria-label="Режим партии">
-        <button type="button" data-mode="2" aria-pressed="true">1×1</button>
-        <button type="button" data-mode="3" aria-pressed="false">Втроём</button>
-        <button type="button" data-mode="4" aria-pressed="false">2×2</button>
-      </div>
-      <div class="utilities">
-        <div class="net-room-badge" id="net-room-badge" hidden>
-          <span class="net-pulse-dot" aria-hidden="true"></span>
-          <span class="net-room-text">Стол <strong id="net-badge-code">----</strong></span>
-          <button type="button" class="net-copy-btn" id="net-badge-copy" title="Скопировать ссылку для друзей" aria-label="Скопировать ссылку на стол">
-            📋 <span class="net-copy-label">Ссылка</span>
-          </button>
-          <span class="net-toast" id="net-toast" hidden>Скопировано!</span>
+      <button type="button" class="button secondary table-menu-toggle" id="table-menu-toggle" aria-expanded="false" aria-controls="table-controls">Меню</button>
+      <div class="table-controls" id="table-controls">
+        <div class="mode-control" id="mode-menu" role="group" aria-label="Режим партии">
+          <button type="button" data-mode="2" aria-pressed="true">1×1</button>
+          <button type="button" data-mode="3" aria-pressed="false">Втроём</button>
+          <button type="button" data-mode="4" aria-pressed="false">2×2</button>
         </div>
-        <button type="button" class="button secondary sound-btn" id="sound-toggle" aria-label="Звук: Включен" title="Включить / выключить звук">🔊</button>
-        <button type="button" class="button secondary" id="history-open" title="История и протокол ходов" aria-label="Открыть историю ходов">📜 Ходы</button>
-        <button type="button" class="button primary" id="online-open">Онлайн игра</button>
-        <button type="button" class="button secondary" id="rules-open">Правила</button>
-        <button type="button" class="button secondary" id="restart">Новая партия</button>
+        <div class="utilities">
+          <div class="net-room-badge" id="net-room-badge" hidden>
+            <span class="net-pulse-dot" aria-hidden="true"></span>
+            <span class="net-room-text">Стол <strong id="net-badge-code">----</strong></span>
+            <button type="button" class="net-copy-btn" id="net-badge-copy" title="Скопировать ссылку для друзей" aria-label="Скопировать ссылку на стол">
+              📋 <span class="net-copy-label">Ссылка</span>
+            </button>
+            <span class="net-toast" id="net-toast" hidden>Скопировано!</span>
+          </div>
+          <button type="button" class="button secondary sound-btn" id="sound-toggle" aria-label="Звук: Включен" title="Включить / выключить звук">🔊</button>
+          <button type="button" class="button secondary" id="history-open" title="История и протокол ходов" aria-label="Открыть историю ходов">📜 Ходы</button>
+          <button type="button" class="button primary" id="online-open">Онлайн игра</button>
+          <button type="button" class="button secondary" id="rules-open">Правила</button>
+          <button type="button" class="button secondary" id="restart">Новая партия</button>
+        </div>
       </div>
     </header>
 
@@ -69,7 +72,6 @@
           <button type="button" id="continue" class="button primary" hidden>Следующий кон</button>
           <button type="button" id="turn-history-btn" class="button secondary" hidden title="Посмотреть историю ходов">📜 Протокол</button>
         </section>
-        <div class="end-total">Сумма концов <strong id="end-total">0</strong></div>
       </div>
 
       <section class="rack" aria-labelledby="rack-label">
@@ -87,7 +89,6 @@
         </div>
         <div class="hand" id="hand" aria-describedby="turn-title"></div>
         <div class="round-hands" id="round-hands" hidden></div>
-        <div class="quick-ends" id="quick-ends" hidden aria-label="Выбор ветки"></div>
       </section>
       <noscript><p class="load-error">Включите JavaScript, чтобы сыграть в домино.</p></noscript>
     </main>

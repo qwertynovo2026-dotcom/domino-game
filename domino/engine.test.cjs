@@ -315,6 +315,35 @@ test('lone 0:0 keeps zero value in teams', () => {
   assert.equal(game.result.bonus, 3);
 });
 
+test('the starter closes a favorable fish by choosing the right end', () => {
+  const game = fixture([
+    ['3:4', '2:6', '1:1', '3:6', '0:4', '0:1', '2:3'],
+    ['4:6', '1:4', '1:2', '0:6', '1:6', '5:5', '2:2'],
+    ['1:3', '1:5', '0:2', '0:3', '0:0', '2:4', '3:5'],
+    ['4:4', '4:5', '6:6', '0:5', '5:6', '2:5', '3:3']
+  ], { scores: [17, 19] });
+  game.starter = game.turn = 2;
+  for (const [id, side] of [
+    ['0:3', null], ['0:5', 0], ['3:6', 1], ['0:6', 1],
+    ['0:0', 1], ['5:6', 0], ['0:4', 1], ['1:6', 0],
+    ['2:4', 1], ['2:5', 1], ['0:1', 0], ['5:5', 1],
+    ['3:5', 1], ['3:3', 1], ['2:3', 1], ['2:2', 1]
+  ]) play(game, id, side);
+
+  const state = asPlain(game);
+  const choice = { tileId: '0:2', side: 1 };
+  assert.deepEqual(asPlain(chooseBotMove(game)), choice);
+  assert.deepEqual(asPlain(game), state);
+  const hiddenSwap = { ...game, hands: [game.hands[1], game.hands[0], game.hands[2], game.hands[3]] };
+  assert.deepEqual(asPlain(chooseBotMove(hiddenSwap)), choice);
+
+  play(game, choice.tileId, choice.side);
+  for (let i = 0; i < game.playerCount; i++) drawOrPass(game);
+  assert.equal(game.result.type, 'blocked');
+  assert.equal(game.result.seat, game.starter);
+  assert.equal(game.result.bonus, 13);
+});
+
 test('seeded bot matches finish and preserve all 28 unique tiles in every mode', () => {
   for (const count of [2, 3, 4]) {
     for (let seed = 1; seed <= 40; seed++) {

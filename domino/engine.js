@@ -9,8 +9,8 @@
     }
   }
 
-  function shuffle(rng) {
-    const tiles = deck.slice();
+  function shuffle(rng, source = deck) {
+    const tiles = source.slice();
     for (let last = tiles.length - 1; last > 0; last--) {
       const index = Math.floor(rng() * (last + 1));
       [tiles[index], tiles[last]] = [tiles[last], tiles[index]];
@@ -179,6 +179,10 @@
     if (!legalMoves(game).some(move => move.tileId === tileId && move.side === side)) {
       throw new Error('Эту кость нельзя поставить сюда.');
     }
+    return applyMove(game, tileId, side);
+  }
+
+  function applyMove(game, tileId, side) {
     const seat = game.turn;
     const hand = game.hands[seat];
     const [tile] = hand.splice(hand.findIndex(candidate => candidate.id === tileId), 1);
@@ -201,6 +205,10 @@
     if (game.phase !== 'playing' || legalMoves(game).length) {
       throw new Error('При доступном ходе нужно поставить кость.');
     }
+    return resolveNoMove(game);
+  }
+
+  function resolveNoMove(game) {
     const seat = game.turn;
     const ends = playableEnds(game.board);
     let drawn = 0;
@@ -226,9 +234,9 @@
     return game;
   }
 
-  function chooseBotMove(game) {
+  function chooseGreedyMove(game, moves) {
+    if (moves.length < 2) return moves[0] ?? null;
     const hand = game.hands[game.turn];
-    const moves = legalMoves(game);
     const byId = new Map(hand.map(tile => [tile.id, tile]));
     let selected = null;
     let best = -Infinity;
@@ -243,6 +251,97 @@
       if (value > best) {
         best = value;
         selected = move;
+      }
+    }
+    return selected;
+  }
+
+  function sampleBotDeal(game, unseen, rng) {
+    const pool = shuffle(rng, unseen);
+    const hands = Array.from({ length: game.playerCount }, () => []);
+    hands[game.turn] = game.hands[game.turn];
+
+    // Consecutive passes refer to the current board and rule out its playable ends.
+    if (game.passCount) {
+      const ends = playableEnds(game.board);
+      for (let offset = 1; offset <= game.passCount; offset++) {
+        const seat = (game.turn - offset + game.playerCount) % game.playerCount;
+        for (let count = 0; count < game.hands[seat].length; count++) {
+          const index = pool.findIndex(tile => ends.every(end => end.pip !== tile.a && end.pip !== tile.b));
+          hands[seat].push(pool.splice(index, 1)[0]);
+        }
+      }
+    }
+
+    for (let seat = 0; seat < game.playerCount; seat++) {
+      if (seat !== game.turn && !hands[seat].length) hands[seat] = pool.splice(0, game.hands[seat].length);
+    }
+    return { hands, stock: pool };
+  }
+
+  function evaluateBotRound(game, deal, move) {
+    const simulation = {
+      ...game,
+      hands: deal.hands.map(hand => hand.slice()),
+      stock: deal.stock.slice(),
+      scores: game.scores.slice()
+    };
+    const seat = game.turn;
+    const side = scoreIndex(game, seat);
+    let missedTurns = 0;
+    let pendingMisses = 0;
+    applyMove(simulation, move.tileId, move.side);
+    while (simulation.phase === 'playing') {
+      const reply = chooseGreedyMove(simulation, legalMoves(simulation));
+      if (reply) {
+        applyMove(simulation, reply.tileId, reply.side);
+        // Passes in the final circle of a fish do not cost a turn.
+        missedTurns += pendingMisses;
+        pendingMisses = 0;
+      } else {
+        if (simulation.turn === seat) pendingMisses++;
+        resolveNoMove(simulation);
+      }
+    }
+    const gains = simulation.scores.map((score, index) => score - game.scores[index]);
+    const opposingGain = Math.max(...gains.filter((_, index) => index !== side));
+    const matchValue = simulation.phase === 'match-over' ? (simulation.winner === side ? 35 : -35) : 0;
+    return gains[side] - opposingGain + matchValue - 0.75 * missedTurns;
+  }
+
+  function chooseBotMove(game) {
+    const moves = legalMoves(game);
+    const greedy = chooseGreedyMove(game, moves);
+    if (moves.length < 2 || game.turn !== game.starter) return greedy;
+
+    const hand = game.hands[game.turn];
+    const tile = hand.find(candidate => candidate.id === greedy.tileId);
+    const nextBoard = place(game.board, tile, greedy.side);
+    const points = movePoints(game, tile, greedy.side, endTotal(nextBoard));
+    if (game.scores[scoreIndex(game, game.turn)] + points >= target) return greedy;
+
+    // Opposing hands and the stock are sampled from the tiles the starter cannot see.
+    const visible = new Set(hand.map(tile => tile.id));
+    if (game.board.root) visible.add(game.board.root.id);
+    for (const arm of game.board.arms) {
+      for (const tile of arm) visible.add(tile.id);
+    }
+    const unseen = deck.filter(tile => !visible.has(tile.id));
+    let seed = unseen.reduce((hash, tile) => Math.imul(hash, 31) + 7 * tile.a + tile.b, 17);
+    const rng = () => {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      return seed / 2 ** 32;
+    };
+    const sampleCount = game.playerCount === 2 && !game.stock.length ? 1 : 12;
+    const deals = Array.from({ length: sampleCount }, () => sampleBotDeal(game, unseen, rng));
+
+    let selected = greedy;
+    let best = -Infinity;
+    for (const move of moves) {
+      const value = deals.reduce((total, deal) => total + evaluateBotRound(game, deal, move), 0);
+      if (value > best || (value === best && move === greedy)) {
+        selected = move;
+        best = value;
       }
     }
     return selected;
