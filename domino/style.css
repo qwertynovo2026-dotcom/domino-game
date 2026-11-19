@@ -116,12 +116,21 @@ button:focus-visible, summary:focus-visible, textarea:focus-visible {
   grid-template-rows: auto minmax(0, 1fr) auto auto;
   min-width: 0;
   min-height: 0;
-  background: radial-gradient(ellipse 85% 70% at 50% 45%, #2a5843 0%, #1c4533 55%, #133326 85%, #0c241a 100%);
-  border-top: 3px solid #4a301b;
+  background-color: #163d2d;
+  background-image:
+    url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23f)' opacity='0.028'/%3E%3C/svg%3E"),
+    radial-gradient(ellipse 85% 70% at 50% 45%, #2a5f46 0%, #1c4734 50%, #133526 80%, #0c2319 100%);
+  border-left: clamp(8px, 1.2vw, 15px) solid #381f10;
+  border-right: clamp(8px, 1.2vw, 15px) solid #381f10;
+  border-bottom: clamp(8px, 1.2vw, 15px) solid #281409;
+  border-top: clamp(4px, 0.8vw, 8px) solid #4a2b16;
   box-shadow:
-    inset 0 3px 6px rgba(0, 0, 0, 0.45),
-    inset 0 0 80px rgba(6, 20, 14, 0.75),
-    0 -1px 0 #c8a364;
+    inset 0 6px 16px rgba(0, 0, 0, 0.75),
+    inset 6px 0 16px rgba(0, 0, 0, 0.7),
+    inset -6px 0 16px rgba(0, 0, 0, 0.7),
+    inset 0 -6px 16px rgba(0, 0, 0, 0.75),
+    inset 0 0 0 1px #c8a36444,
+    inset 0 0 100px rgba(6, 20, 14, 0.65);
 }
 .table-head, .table-foot { padding-inline: var(--edge); }
 .table-head {
@@ -399,12 +408,9 @@ button.board-end:hover {
 .rack {
   min-width: 0;
   padding: 6px var(--edge) max(10px, env(safe-area-inset-bottom));
-  border-top: 2px solid #5a3c22;
-  background: linear-gradient(to bottom, #1d1611 0%, #2a1f18 10%, #1f1712 100%);
-  box-shadow:
-    0 -4px 20px rgba(0, 0, 0, 0.55),
-    inset 0 1px 0 #a27244,
-    inset 0 2px 4px rgba(0, 0, 0, 0.4);
+  border-top: 1px solid rgba(183, 203, 172, 0.22);
+  background: linear-gradient(to bottom, rgba(14, 40, 30, 0.35) 0%, rgba(9, 25, 19, 0.65) 100%);
+  box-shadow: 0 -3px 12px rgba(6, 20, 14, 0.35), inset 0 1px 0 rgba(217, 237, 211, 0.1);
 }
 .rack-head, .rack-label { display: flex; align-items: baseline; gap: 7px; }
 .rack-head { min-height: 30px; justify-content: space-between; align-items: center; flex-wrap: wrap; margin-bottom: 2px; }
