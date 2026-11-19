@@ -38,6 +38,14 @@
   const log = byId('events-log');
   const historyText = byId('match-history');
   const historyStatus = byId('history-status');
+  const historyDialog = byId('history-dialog');
+  const historyOpenBtn = byId('history-open');
+  const turnHistoryBtn = byId('turn-history-btn');
+  const historyTabsEl = byId('history-tabs');
+  const historyBodyEl = byId('history-body');
+  const historyMatchInfo = byId('history-match-info');
+  const historyCopyBtn = byId('history-copy-btn');
+  const historyCopyStatus = byId('history-copy-status');
   const directions = ['Левая ветка', 'Правая ветка', 'Верхняя ветка', 'Нижняя ветка'];
   const pipSlots = [[], [3], [0, 6], [0, 3, 6], [0, 1, 5, 6], [0, 1, 3, 5, 6], [0, 1, 2, 4, 5, 6]];
   const wideSixSlots = [0, 7, 1, 5, 8, 6];
@@ -269,6 +277,349 @@
     if (rules.open) refreshJournal();
   }
 
+  // --- Move History Protocol & Viewer ---
+  let matchHistoryData = {
+    matchNumber: 1,
+    playerCount: 2,
+    startedAt: Date.now(),
+    rounds: [],
+    winner: null,
+    finalScores: []
+  };
+  let activeHistoryRoundFilter = 'all';
+  let tilesDrawnThisTurn = {};
+  let lastLoggedNetworkMove = null;
+
+  function initMatchHistory(players, num = 1) {
+    matchHistoryData = {
+      matchNumber: num,
+      playerCount: players,
+      startedAt: Date.now(),
+      rounds: [],
+      winner: null,
+      finalScores: []
+    };
+    tilesDrawnThisTurn = {};
+    lastLoggedNetworkMove = null;
+    activeHistoryRoundFilter = 'all';
+  }
+
+  function ensureRoundHistory(roundNumber, starterSeat) {
+    let round = matchHistoryData.rounds.find(r => r.roundNumber === roundNumber);
+    if (!round) {
+      round = {
+        roundNumber,
+        starterSeat,
+        starterName: seatName(starterSeat),
+        startedAt: Date.now(),
+        moves: [],
+        result: null
+      };
+      matchHistoryData.rounds.push(round);
+    }
+    return round;
+  }
+
+  function recordHistoryPlay(seat, tile, side, points = 0, sum = 0) {
+    const round = ensureRoundHistory(game?.roundNumber ?? 1, game?.starter ?? 0);
+    const drawn = tilesDrawnThisTurn[seat] || 0;
+    tilesDrawnThisTurn[seat] = 0;
+    const moveNum = round.moves.length + 1;
+    const isMe = (isNetworkMode && net?.mySeat === seat) || (!isNetworkMode && seat === 0);
+    const avatar = isNetworkMode
+      ? (networkSnapshot?.seats?.find(s => s.seatIndex === seat)?.player?.isBot ? '🤖' : '👤')
+      : (seat === 0 ? '👤' : '🤖');
+
+    const sideName = side === null ? 'центр («Дом»)' : (directions[side] || `ветка ${side}`);
+
+    round.moves.push({
+      moveNum,
+      seat,
+      playerName: seatName(seat),
+      avatar,
+      isMe,
+      kind: 'play',
+      tile: { a: tile.a, b: tile.b },
+      side,
+      sideName,
+      points: points || 0,
+      sum,
+      drawn,
+      time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    });
+
+    if (historyDialog?.open) renderHistoryDialogContent();
+  }
+
+  function recordHistoryDraw(seat, count = 1) {
+    tilesDrawnThisTurn[seat] = (tilesDrawnThisTurn[seat] || 0) + count;
+  }
+
+  function recordHistoryPass(seat, drawn = 0) {
+    const round = ensureRoundHistory(game?.roundNumber ?? 1, game?.starter ?? 0);
+    const drawnCount = drawn || tilesDrawnThisTurn[seat] || 0;
+    tilesDrawnThisTurn[seat] = 0;
+    const moveNum = round.moves.length + 1;
+    const isMe = (isNetworkMode && net?.mySeat === seat) || (!isNetworkMode && seat === 0);
+    const avatar = isNetworkMode
+      ? (networkSnapshot?.seats?.find(s => s.seatIndex === seat)?.player?.isBot ? '🤖' : '👤')
+      : (seat === 0 ? '👤' : '🤖');
+
+    round.moves.push({
+      moveNum,
+      seat,
+      playerName: seatName(seat),
+      avatar,
+      isMe,
+      kind: 'pass',
+      drawn: drawnCount,
+      time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    });
+
+    if (historyDialog?.open) renderHistoryDialogContent();
+  }
+
+  function recordHistoryRoundEnd(result, scores) {
+    if (!result) return;
+    const round = ensureRoundHistory(game?.roundNumber ?? 1, game?.starter ?? 0);
+    round.result = {
+      type: result.type,
+      tied: result.tied,
+      winnerSeat: result.seat,
+      winnerName: result.seat !== null
+        ? (game?.playerCount === 4 && result.seat % 2 === 0 ? 'Ваша пара' : seatName(result.seat))
+        : 'Ничья',
+      bonus: result.bonus || 0,
+      remainders: result.remainders ? result.remainders.slice() : [],
+      scores: scores ? scores.slice() : []
+    };
+    if (historyDialog?.open) renderHistoryDialogContent();
+  }
+
+  function recordHistoryMatchEnd(winner, scores) {
+    matchHistoryData.winner = winner;
+    matchHistoryData.winnerName = game?.playerCount === 4
+      ? (winner === 0 ? 'Ваша пара' : 'Соперники')
+      : scoreName(winner);
+    matchHistoryData.finalScores = scores ? scores.slice() : [];
+    if (historyDialog?.open) renderHistoryDialogContent();
+  }
+
+  function buildHistoryPlainText() {
+    const modeStr = modeLabels[matchHistoryData.playerCount] || '1×1';
+    const lines = [
+      `=== ДОМИНО «ПЯТЁРОЧКА» · ПРОТОКОЛ МАТЧА ===`,
+      `Партия № ${matchHistoryData.matchNumber} · Режим: ${modeStr}`,
+      `Дата: ${new Date(matchHistoryData.startedAt).toLocaleString('ru-RU')}`,
+      ``
+    ];
+
+    for (const round of matchHistoryData.rounds) {
+      lines.push(`--- КОН № ${round.roundNumber} (Ставщик: ${round.starterName}) ---`);
+      for (const m of round.moves) {
+        let actionStr = '';
+        if (m.kind === 'play') {
+          actionStr = `поставил [${m.tile.a}|${m.tile.b}] · ${m.sideName}`;
+          if (m.points > 0) actionStr += ` -> +${m.points} очк.`;
+          actionStr += ` (сумма концов: ${m.sum})`;
+        } else if (m.kind === 'pass') {
+          actionStr = `Пас (стук)`;
+        }
+        if (m.drawn > 0) actionStr = `[взял из базара: ${m.drawn} шт.] ` + actionStr;
+        lines.push(`${m.moveNum}. ${m.avatar} ${m.playerName}: ${actionStr}`);
+      }
+
+      if (round.result) {
+        const typeStr = round.result.type === 'blocked' ? 'Рыба' : round.result.type === 'target' ? 'Цель 71 достигнута' : 'Домино';
+        if (round.result.tied) {
+          lines.push(`[ИТОГ КОНА № ${round.roundNumber}] ${typeStr}! Ничья.`);
+        } else {
+          lines.push(`[ИТОГ КОНА № ${round.roundNumber}] ${typeStr}! Победитель: ${round.result.winnerName} (+${round.result.bonus} за остаток).`);
+          if (round.result.remainders?.length) {
+            lines.push(`  Остатки на руках: ` + round.result.remainders.map((pts, s) => `${seatName(s)}: ${pts}`).join(', '));
+          }
+        }
+        lines.push(`  Счёт партии после кона: ${round.result.scores.join(' : ')}`);
+      }
+      lines.push(``);
+    }
+
+    if (matchHistoryData.winner !== null) {
+      lines.push(`=============================================`);
+      lines.push(`🏆 ИТОГ ПАРТИИ: Победитель — ${matchHistoryData.winnerName} со счётом ${matchHistoryData.finalScores.join(' : ')}!`);
+      lines.push(`=============================================`);
+    }
+
+    return lines.join('\n');
+  }
+
+  function renderHistoryDialogContent() {
+    if (!historyDialog || !historyBodyEl) return;
+
+    if (historyMatchInfo) {
+      const modeStr = modeLabels[matchHistoryData.playerCount] || '1×1';
+      historyMatchInfo.textContent = `Партия № ${matchHistoryData.matchNumber} · ${modeStr}`;
+    }
+
+    // Render filter tabs
+    if (historyTabsEl) {
+      const tabs = [];
+      const allBtn = element('button', 'history-tab', 'Все коны');
+      allBtn.type = 'button';
+      allBtn.setAttribute('aria-pressed', String(activeHistoryRoundFilter === 'all'));
+      allBtn.addEventListener('click', () => {
+        activeHistoryRoundFilter = 'all';
+        renderHistoryDialogContent();
+      });
+      tabs.push(allBtn);
+
+      for (const round of matchHistoryData.rounds) {
+        const isCurrent = round.roundNumber === (game?.roundNumber ?? 1) && game?.phase === 'playing';
+        const label = `Кон № ${round.roundNumber}${isCurrent ? ' (текущий)' : ''}`;
+        const tabBtn = element('button', 'history-tab', label);
+        tabBtn.type = 'button';
+        tabBtn.setAttribute('aria-pressed', String(activeHistoryRoundFilter === round.roundNumber));
+        tabBtn.addEventListener('click', () => {
+          activeHistoryRoundFilter = round.roundNumber;
+          renderHistoryDialogContent();
+        });
+        tabs.push(tabBtn);
+      }
+      historyTabsEl.replaceChildren(...tabs);
+    }
+
+    // Filter rounds to display
+    const roundsToRender = activeHistoryRoundFilter === 'all'
+      ? matchHistoryData.rounds
+      : matchHistoryData.rounds.filter(r => r.roundNumber === activeHistoryRoundFilter);
+
+    if (!roundsToRender.length || roundsToRender.every(r => !r.moves.length && !r.result)) {
+      historyBodyEl.replaceChildren(element('div', 'history-empty-state', 'Ходов пока нет. Поставьте первую кость на стол!'));
+      return;
+    }
+
+    const cards = [];
+    for (const round of roundsToRender) {
+      const card = element('section', 'history-round-card');
+
+      // Head
+      const head = element('header', 'history-round-head');
+      const titleBox = element('div', 'history-round-title');
+      titleBox.append(
+        element('h3', '', `Кон № ${round.roundNumber}`),
+        element('span', 'history-starter-badge', `Ставщик: ${round.starterName}`)
+      );
+      const meta = element('span', 'history-round-meta', `Ходов: ${round.moves.length}`);
+      head.append(titleBox, meta);
+      card.append(head);
+
+      // Moves list
+      const list = element('ol', 'history-moves-list');
+      for (const move of round.moves) {
+        const item = element('li', move.points > 0 ? 'history-move-item scoring' : 'history-move-item');
+        const num = element('span', 'history-move-num', `#${move.moveNum}`);
+        const player = element('span', move.isMe ? 'history-player-badge is-me' : 'history-player-badge', `${move.avatar} ${move.playerName}`);
+
+        const content = element('div', 'history-move-content');
+        if (move.drawn > 0) {
+          content.append(element('span', 'history-draw-badge', `базар: +${move.drawn}`));
+        }
+
+        if (move.kind === 'play') {
+          const tileChip = element('span', 'history-tile-chip', `${move.tile.a}|${move.tile.b}`);
+          const sideText = element('span', 'history-side-text', move.sideName);
+          content.append(tileChip, sideText);
+          if (move.points > 0) {
+            content.append(element('strong', 'history-points-badge', `+${move.points} ${scorePointsWord(move.points)}`));
+          }
+          content.append(element('span', 'history-sum-text', `концы: ${move.sum}`));
+        } else if (move.kind === 'pass') {
+          content.append(element('span', 'history-pass-badge', 'Пас (стук)'));
+        }
+
+        item.append(num, player, content);
+        list.append(item);
+      }
+      card.append(list);
+
+      // Round result if finished
+      if (round.result) {
+        const foot = element('footer', 'history-round-result');
+        const badgeBox = element('div', 'history-result-badge');
+        badgeBox.append(element('span', '', round.result.type === 'blocked' ? '🐟' : '🏁'));
+
+        const textBox = element('div');
+        const typeStr = round.result.type === 'blocked' ? 'Рыба' : round.result.type === 'target' ? 'Цель 71 достигнута' : 'Домино';
+        textBox.append(element('strong', '', `Кон окончен: ${typeStr}!`));
+
+        let detailText = '';
+        if (round.result.tied) {
+          detailText = 'Ничья за наименьший остаток — бонус никому не начислен.';
+        } else {
+          detailText = `Победитель кона: ${round.result.winnerName} (+${round.result.bonus} ${scorePointsWord(round.result.bonus)} за остатки).`;
+          if (round.result.remainders?.length) {
+            const rems = round.result.remainders.map((pts, s) => `${seatName(s)}: ${pts}`).join(', ');
+            detailText += ` Остатки: ${rems}.`;
+          }
+        }
+        textBox.append(element('p', '', detailText));
+        badgeBox.append(textBox);
+
+        const scoreBox = element('div', 'history-round-score');
+        scoreBox.innerHTML = `Счёт: <strong>${round.result.scores.join(' : ')}</strong>`;
+
+        foot.append(badgeBox, scoreBox);
+        card.append(foot);
+      }
+
+      cards.push(card);
+    }
+
+    // Match over summary if match finished and filter is 'all'
+    if (matchHistoryData.winner !== null && (activeHistoryRoundFilter === 'all' || activeHistoryRoundFilter === matchHistoryData.rounds.length)) {
+      const matchSummary = element('div', 'history-match-summary');
+      matchSummary.append(
+        element('div', 'history-trophy', '🏆'),
+        (() => {
+          const box = element('div');
+          box.append(
+            element('h4', '', 'Партия завершена!'),
+            element('p', '', `Победитель: ${matchHistoryData.winnerName} со счётом ${matchHistoryData.finalScores.join(' : ')}`),
+            element('small', '', `Всего сыграно конов: ${matchHistoryData.rounds.length}`)
+          );
+          return box;
+        })()
+      );
+      cards.push(matchSummary);
+    }
+
+    historyBodyEl.replaceChildren(...cards);
+  }
+
+  function openHistoryDialog() {
+    renderHistoryDialogContent();
+    try {
+      if (!historyDialog.open) historyDialog.showModal();
+    } catch {}
+    setTimeout(() => {
+      if (historyBodyEl) historyBodyEl.scrollTop = historyBodyEl.scrollHeight;
+    }, 60);
+  }
+
+  historyOpenBtn?.addEventListener('click', openHistoryDialog);
+  turnHistoryBtn?.addEventListener('click', openHistoryDialog);
+
+  historyCopyBtn?.addEventListener('click', async () => {
+    const text = buildHistoryPlainText();
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {}
+    if (historyCopyStatus) {
+      historyCopyStatus.hidden = false;
+      setTimeout(() => { if (historyCopyStatus) historyCopyStatus.hidden = true; }, 2200);
+    }
+  });
+
   function renderScore() {
     const scores = game.scores.map((score, index) => {
       const card = element('div', index === 0 ? 'score mine' : 'score');
@@ -381,6 +732,7 @@
       turnDetail.textContent = pendingDraw !== null ? 'Иду на базар.' : lastMoveText() ||
         (game.starter === 0 ? 'Вы открываете кон.' : seatName(game.starter) + ' открывает кон.');
       continueButton.hidden = true;
+      if (turnHistoryBtn) turnHistoryBtn.hidden = true;
       return;
     }
 
@@ -409,6 +761,10 @@
       : next === 0 ? ' Следующий кон открываете вы.' : ' Следующий кон открывает ' + seatName(next).toLowerCase() + '.');
     continueButton.textContent = matchOver ? 'Новая партия' : 'Следующий кон';
     continueButton.hidden = false;
+    if (turnHistoryBtn) {
+      turnHistoryBtn.textContent = matchOver ? '📜 Протокол всей партии' : '📜 Протокол кона';
+      turnHistoryBtn.hidden = false;
+    }
   }
 
   function position(node, x, y) {
@@ -791,6 +1147,7 @@
         renderSeats();
         renderStatus([]);
         showMoveCue({ seat, text: 'Иду на базар' });
+        recordHistoryDraw(seat, 1);
         botTimer = setTimeout(drawOrPass, botDrawPause);
       } else {
         drawOrPass();
@@ -899,6 +1256,15 @@
   function afterAction(played, origin) {
     selectedTileId = null;
     const move = game.lastMove;
+    if (played) {
+      recordHistoryPlay(move.seat, move.tile, move.side, move.points, engine.endTotal(game.board));
+    } else {
+      if (move.kind === 'pass') {
+        recordHistoryPass(move.seat);
+      } else if (move.kind === 'draw') {
+        recordHistoryDraw(move.seat, 1);
+      }
+    }
     seatActions[move.seat] = played
       ? { text: move.tile.a + '–' + move.tile.b, points: move.points }
       : { text: move.kind === 'pass' ? 'Стучу' : 'Взял из базара' };
@@ -910,7 +1276,11 @@
       : move.kind === 'pass' ? { seat: move.seat, text: 'Стучу' } : null;
     if (game.phase !== 'playing') {
       record('round_end');
+      recordHistoryRoundEnd(game.result, game.scores);
       const matchOver = game.phase === 'match-over';
+      if (matchOver) {
+        recordHistoryMatchEnd(game.winner, game.scores);
+      }
       setTimeout(() => {
         globalThis.DominoSound?.playFanfare(matchOver);
         if (matchOver) triggerConfetti();
@@ -965,9 +1335,12 @@
     matchStartTime = Date.now();
     roundStartTime = matchStartTime;
     game = engine.createGame(players);
+    initMatchHistory(players, matchNumber + 1);
+    ensureRoundHistory(game.roundNumber, game.starter);
     activeSeat = null;
     const id = globalThis.crypto?.randomUUID?.() ?? Date.now() + '-' + Math.random().toString(36).slice(2);
     currentJournal = { id, number: ++matchNumber, startedAt: matchStartTime, players, events: [] };
+    matchHistoryData.matchNumber = matchNumber;
     const key = historyPrefix + id;
     memoryHistory.set(key, currentJournal);
     if (memoryHistory.size > historyLimit) memoryHistory.delete(memoryHistory.keys().next().value);
@@ -996,6 +1369,7 @@
     if (game.stock.length) {
       globalThis.DominoSound?.playDraw();
       showMoveCue({ seat: 0, text: 'Иду на базар' });
+      recordHistoryDraw(0, 1);
     }
     engine.drawOrPass(game);
     const moves = yourMoves();
@@ -1038,6 +1412,7 @@
       lastScoredMoveKey = null;
       record('round_continue');
       engine.nextRound(game);
+      ensureRoundHistory(game.roundNumber, game.starter);
       record('round_start');
       selectedTileId = null;
       seatActions = [];
@@ -1402,7 +1777,11 @@
           networkSnapshot.round === sGame.roundNumber;
         const newMove = sameRound && sGame.moveNumber === networkSnapshot.move + 1;
         const wasPaused = networkPaused;
+        if (!sameRoom) {
+          initMatchHistory(4, sGame.matchNumber);
+        }
         if (!sameRound) {
+          ensureRoundHistory(sGame.roundNumber, toRel(sGame.starter));
           cancelBotAction();
           clearFlight();
           clearMoveCue();
@@ -1458,14 +1837,17 @@
             if (activeFlight) finishFlight();
             cue = { seat: relSeat, ...seatActions[relSeat] };
             if (sGame.lastMove.kind === 'play') {
+              recordHistoryPlay(relSeat, sGame.lastMove.tile, sGame.lastMove.side, sGame.lastMove.points, engine.endTotal(sGame.board));
               origin = flightOrigin(relSeat, sGame.lastMove.tile.id);
               if (!origin) {
                 globalThis.DominoSound?.playTilePlace();
                 if (sGame.lastMove.points > 0) setTimeout(() => globalThis.DominoSound?.playScore(sGame.lastMove.points), 180);
               }
             } else if (sGame.lastMove.kind === 'pass') {
+              recordHistoryPass(relSeat);
               globalThis.DominoSound?.playKnock();
             } else if (sGame.lastMove.kind === 'draw') {
+              recordHistoryDraw(relSeat, 1);
               globalThis.DominoSound?.playDraw();
             }
           }
@@ -1498,7 +1880,11 @@
 
         render(origin, cue);
         if (!wasPaused && newMove && (sGame.phase === 'round-over' || sGame.phase === 'match-over')) {
+          recordHistoryRoundEnd(relResult, scores);
           const matchOver = sGame.phase === 'match-over';
+          if (matchOver) {
+            recordHistoryMatchEnd(sGame.winner !== null ? (sGame.winner === myTeam ? 0 : 1) : null, scores);
+          }
           setTimeout(() => {
             globalThis.DominoSound?.playFanfare(matchOver);
             if (matchOver) triggerConfetti();

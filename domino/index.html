@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#153a2f">
   <title>Пятёрочка · Домино до 71</title>
-  <link rel="stylesheet" href="style.css?v=2.7">
+  <link rel="stylesheet" href="style.css?v=2.9">
   <script defer src="engine.js?v=2.0"></script>
   <script defer src="layout.js?v=2.0"></script>
   <script defer src="sound.js?v=2.7"></script>
   <script defer src="quick-messages.js?v=2.2"></script>
   <script defer src="net.js?v=2.2"></script>
-  <script defer src="app.js?v=2.7"></script>
+  <script defer src="app.js?v=2.9"></script>
 </head>
 <body>
   <div class="shell">
@@ -39,6 +39,7 @@
           <span class="net-toast" id="net-toast" hidden>Скопировано!</span>
         </div>
         <button type="button" class="button secondary sound-btn" id="sound-toggle" aria-label="Звук: Включен" title="Включить / выключить звук">🔊</button>
+        <button type="button" class="button secondary" id="history-open" title="История и протокол ходов" aria-label="Открыть историю ходов">📜 Ходы</button>
         <button type="button" class="button primary" id="online-open">Онлайн игра</button>
         <button type="button" class="button secondary" id="rules-open">Правила</button>
         <button type="button" class="button secondary" id="restart">Новая партия</button>
@@ -66,6 +67,7 @@
             <p id="turn-detail"></p>
           </div>
           <button type="button" id="continue" class="button primary" hidden>Следующий кон</button>
+          <button type="button" id="turn-history-btn" class="button secondary" hidden title="Посмотреть историю ходов">📜 Протокол</button>
         </section>
         <div class="end-total">Сумма концов <strong id="end-total">0</strong></div>
       </div>
@@ -271,6 +273,26 @@
       <p id="lobby-status-msg" style="font-size: 0.8rem; color: var(--muted); margin: 0; text-align: center;"></p>
     </div>
     <div id="lobby-error" class="lobby-error" role="alert" hidden></div>
+  </dialog>
+
+  <dialog id="history-dialog" class="history-dialog" aria-labelledby="history-title">
+    <div class="dialog-head">
+      <div class="history-header-left">
+        <h2 id="history-title">📜 Протокол ходов</h2>
+        <span id="history-match-info" class="history-match-pill">Партия № 1</span>
+      </div>
+      <form method="dialog"><button type="submit" class="button secondary" id="history-close" aria-label="Закрыть историю">Закрыть</button></form>
+    </div>
+
+    <div class="history-toolbar">
+      <div class="history-tabs" id="history-tabs" role="tablist" aria-label="Выбор кона"></div>
+      <div class="history-actions">
+        <button type="button" class="button secondary" id="history-copy-btn" title="Скопировать текстовый протокол партии">📋 Скопировать</button>
+        <span id="history-copy-status" class="history-copy-status" hidden>Скопировано!</span>
+      </div>
+    </div>
+
+    <div class="history-body" id="history-body" tabindex="0"></div>
   </dialog>
   <canvas id="confetti-canvas" class="confetti-canvas" aria-hidden="true"></canvas>
 </body>
