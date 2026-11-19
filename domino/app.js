@@ -6,6 +6,7 @@
   const layout = globalThis.DominoBoardLayout;
   const turnTitle = byId('turn-title');
   const turnDetail = byId('turn-detail');
+  const endTotal = byId('end-total');
   if (!engine || !layout) {
     turnTitle.textContent = 'Стол недоступен';
     turnDetail.textContent = 'Откройте index.html из папки, где находятся остальные файлы игры.';
@@ -94,7 +95,6 @@
   let currentJournal;
   let matchNumber = Math.max(0, ...recentMatches().map(entry => entry.number));
   let selectedTileId = null;
-  let placementError = '';
   let lastPlacedTileId = null;
   let botTimer;
   let moveCue = null;
@@ -722,13 +722,12 @@
     return name + ' · ' + move.tile.a + '–' + move.tile.b + (move.points ? ' · +' + move.points : '') + '.';
   }
 
-  function renderStatus() {
+  function renderStatus(moves = yourMoves()) {
     const playing = game.phase === 'playing';
     const yourTurn = playing && game.turn === 0;
     const turnCard = byId('turn-card');
     turnCard.classList.toggle('is-your-turn', yourTurn);
     turnDetail.classList.toggle('sr-only', pendingDraw !== null);
-    turnDetail.classList.toggle('placement-error', yourTurn && Boolean(placementError));
     if (isNetworkMode && networkPaused) {
       byId('turn-label').textContent = 'Онлайн';
       turnTitle.textContent = 'Соединение прервано';
@@ -739,11 +738,13 @@
 
     if (playing) {
       byId('turn-label').textContent = yourTurn ? 'Ваш ход' : 'Ход соперника';
-      turnTitle.textContent = yourTurn ? (selectedTileId ? 'Выберите конец цепочки' : 'Ваш ход') : seatName(game.turn) + ' ходит';
+      turnTitle.textContent = yourTurn
+        ? (selectedTileId ? 'Выберите конец цепочки' : moves.length ? 'Выберите кость' : game.stock.length ? 'Возьмите из базара' : 'Пасуйте')
+        : seatName(game.turn) + ' ходит';
       if (!yourTurn && game.playerCount === 4 && game.turn === 2) {
         byId('turn-label').textContent = 'Ход напарника';
       }
-      turnDetail.textContent = (yourTurn && placementError) || (pendingDraw !== null ? 'Иду на базар.' : lastMoveText()) ||
+      turnDetail.textContent = pendingDraw !== null ? 'Иду на базар.' : lastMoveText() ||
         (game.starter === 0 ? 'Вы открываете кон.' : seatName(game.starter) + ' открывает кон.');
       continueButton.hidden = true;
       if (turnHistoryBtn) turnHistoryBtn.hidden = true;
@@ -1099,11 +1100,12 @@
     }
     roundHands.replaceChildren();
 
+    const available = new Set(moves.map(move => move.tileId));
     const focusedId = hand.contains(document.activeElement) ? document.activeElement.dataset.tileId : null;
     const nodes = game.hands[0].map(tile => {
       const node = domino(tile.a, tile.b, true, 'button');
       node.dataset.tileId = tile.id;
-      node.disabled = !yourTurn;
+      node.disabled = !available.has(tile.id);
       node.setAttribute('aria-pressed', String(tile.id === selectedTileId));
       node.addEventListener('click', event => selectFromHand(tile.id, event.detail === 0));
       return node;
@@ -1131,8 +1133,10 @@
     const choices = selectedMoves(moves);
     renderScore();
     renderSeats();
-    renderStatus();
+    renderStatus(moves);
     byId('round-label').textContent = 'Кон № ' + game.roundNumber;
+    endTotal.textContent = engine.endTotal(game.board);
+    endTotal.classList.toggle('scoring', game.lastMove?.kind === 'play' && game.lastMove.points > 0);
     const stockIcon = element('span', 'stock-icon');
     stockIcon.setAttribute('aria-hidden', 'true');
     byId('stock').replaceChildren(stockIcon, element('span', '', 'Базар · ' + game.stock.length));
@@ -1279,7 +1283,6 @@
 
   function afterAction(played, origin) {
     selectedTileId = null;
-    placementError = '';
     const move = game.lastMove;
     if (played) {
       recordHistoryPlay(move.seat, move.tile, move.side, move.points, engine.endTotal(game.board));
@@ -1328,15 +1331,7 @@
     if (!isYourTurn()) return;
     const moves = yourMoves().filter(move => move.tileId === id);
     if (moves.length === 1) return playYourMove(moves[0]);
-    if (!moves.length) {
-      selectedTileId = null;
-      if (!game.board.root) placementError = 'Первый кон открывают старшим дублем или самой тяжёлой костью.';
-      else if (game.forcedTileId && id !== game.forcedTileId) placementError = 'Сначала сыграйте подходящую кость, взятую из базара.';
-      else placementError = 'Эта кость не подходит ни к одному открытому концу.';
-      render();
-      return;
-    }
-    placementError = '';
+    if (!moves.length) return;
     selectedTileId = selectedTileId === id ? null : id;
     render();
     if (fromKeyboard && selectedTileId !== null) {
@@ -1350,7 +1345,6 @@
   }
 
   function playYourMove({ tileId, side }) {
-    placementError = '';
     if (isNetworkMode) {
       selectedTileId = null;
       globalThis.DominoNet?.playTile(tileId, side);
@@ -1380,7 +1374,6 @@
     memoryHistory.set(key, currentJournal);
     if (memoryHistory.size > historyLimit) memoryHistory.delete(memoryHistory.keys().next().value);
     selectedTileId = null;
-    placementError = '';
     seatActions = [];
     record('round_start');
     if (historyStorage) {
@@ -1399,7 +1392,6 @@
     if (event.key !== 'Escape' || selectedTileId === null) return;
     const tileId = selectedTileId;
     selectedTileId = null;
-    placementError = '';
     render();
     hand.querySelector(`[data-tile-id="${tileId}"]`)?.focus({ preventScroll: true });
   }
@@ -1454,7 +1446,6 @@
       ensureRoundHistory(game.roundNumber, game.starter);
       record('round_start');
       selectedTileId = null;
-      placementError = '';
       seatActions = [];
       render();
       scheduleBot();
@@ -1858,7 +1849,6 @@
         }
         if (!sameRound || networkSnapshot.move !== sGame.moveNumber || wasPaused) {
           selectedTileId = null;
-          placementError = '';
         }
         networkPaused = false;
         networkSnapshot = { room: msg.roomId, match: sGame.matchNumber, round: sGame.roundNumber, move: sGame.moveNumber };
@@ -1961,7 +1951,6 @@
         networkPaused = true;
         clearQuickMessages();
         selectedTileId = null;
-        placementError = '';
         render();
       });
 
