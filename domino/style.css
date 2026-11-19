@@ -1095,10 +1095,16 @@ dialog :focus-visible { outline-color: var(--brick); }
 /* Moves History Protocol Dialog */
 .history-dialog {
   width: min(680px, calc(100% - 20px));
-  max-height: calc(100dvh - 30px);
-  padding: 18px 20px 20px;
+  height: min(85dvh, 720px);
+  max-height: calc(100dvh - 24px);
+  padding: 16px 20px 16px;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+.history-dialog .dialog-head {
+  flex: none;
 }
 .history-header-left {
   display: flex;
@@ -1116,6 +1122,7 @@ dialog :focus-visible { outline-color: var(--brick); }
   border: 1px solid #c2dbbe;
 }
 .history-toolbar {
+  flex: none;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -1164,15 +1171,31 @@ dialog :focus-visible { outline-color: var(--brick); }
   white-space: nowrap;
 }
 .history-body {
-  flex: 1 1 auto;
+  flex: 1 1 0;
+  min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding-right: 4px;
+  padding-right: 6px;
   scrollbar-width: thin;
-  scrollbar-color: #b7cbac63 transparent;
+  scrollbar-color: #baa88c transparent;
+}
+.history-body::-webkit-scrollbar {
+  width: 8px;
+}
+.history-body::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 4px;
+}
+.history-body::-webkit-scrollbar-thumb {
+  background: #c5b8a1;
+  border-radius: 4px;
+  border: 1.5px solid #f9f4e8;
+}
+.history-body::-webkit-scrollbar-thumb:hover {
+  background: #9d8d73;
 }
 .history-empty-state {
   text-align: center;

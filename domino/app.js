@@ -470,6 +470,7 @@
       allBtn.addEventListener('click', () => {
         activeHistoryRoundFilter = 'all';
         renderHistoryDialogContent();
+        if (historyBodyEl) historyBodyEl.scrollTop = 0;
       });
       tabs.push(allBtn);
 
@@ -482,6 +483,7 @@
         tabBtn.addEventListener('click', () => {
           activeHistoryRoundFilter = round.roundNumber;
           renderHistoryDialogContent();
+          if (historyBodyEl) historyBodyEl.scrollTop = 0;
         });
         tabs.push(tabBtn);
       }
@@ -596,18 +598,24 @@
     historyBodyEl.replaceChildren(...cards);
   }
 
-  function openHistoryDialog() {
+  function openHistoryDialog(filter = null) {
+    if (filter !== null) {
+      activeHistoryRoundFilter = filter;
+    }
     renderHistoryDialogContent();
     try {
       if (!historyDialog.open) historyDialog.showModal();
     } catch {}
     setTimeout(() => {
-      if (historyBodyEl) historyBodyEl.scrollTop = historyBodyEl.scrollHeight;
-    }, 60);
+      if (historyBodyEl) historyBodyEl.scrollTop = 0;
+    }, 40);
   }
 
-  historyOpenBtn?.addEventListener('click', openHistoryDialog);
-  turnHistoryBtn?.addEventListener('click', openHistoryDialog);
+  historyOpenBtn?.addEventListener('click', () => openHistoryDialog());
+  turnHistoryBtn?.addEventListener('click', () => {
+    const filter = (game?.phase === 'match-over') ? 'all' : (game?.roundNumber ?? 'all');
+    openHistoryDialog(filter);
+  });
 
   historyCopyBtn?.addEventListener('click', async () => {
     const text = buildHistoryPlainText();
