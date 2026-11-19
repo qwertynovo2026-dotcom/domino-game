@@ -302,7 +302,24 @@
       const count = element('strong', 'seat-count', tiles.length);
       count.setAttribute('aria-label', tileCount(tiles.length));
       const heading = element('div', 'seat-heading');
-      heading.append(element('span', 'seat-name', seatName(seat)), count);
+      const avatar = element('span', 'seat-avatar');
+      if (isNetworkMode) {
+        const netSeat = networkSnapshot?.seats?.find(s => s.seatIndex === seat);
+        if (netSeat?.player?.isBot) {
+          avatar.textContent = '🤖';
+          avatar.title = 'Бот';
+        } else if (netSeat?.player?.isHost) {
+          avatar.textContent = '👑';
+          avatar.title = 'Хост';
+        } else {
+          avatar.textContent = '👤';
+          avatar.title = 'Игрок';
+        }
+      } else {
+        avatar.textContent = seat === 0 ? '👤' : '🤖';
+        avatar.title = seat === 0 ? 'Вы' : 'Бот';
+      }
+      heading.append(avatar, element('span', 'seat-name', seatName(seat)), count);
       const markers = element('div', 'seat-markers');
       if (seat === game.starter) markers.append(element('span', 'seat-starter', 'Ставщик'));
       if (active) {
@@ -781,6 +798,104 @@
     }, game.lastMove?.points ? 1430 : 1020);
   }
 
+  // Confetti celebration cannon on match win
+  let confettiAnimId = null;
+  function triggerConfetti(durationMs = 4200) {
+    if (reducedMotion.matches) return;
+    const canvas = byId('confetti-canvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    if (confettiAnimId) {
+      cancelAnimationFrame(confettiAnimId);
+      confettiAnimId = null;
+    }
+
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+    ctx.scale(dpr, dpr);
+
+    const colors = ['#f59e0b', '#ffd700', '#10b981', '#3b82f6', '#ec4899', '#f97316', '#ffffff', '#e0e7ff'];
+    const particleCount = 140;
+    const particles = [];
+
+    for (let i = 0; i < particleCount; i++) {
+      const fromLeft = i % 2 === 0;
+      const x = fromLeft ? Math.random() * (width * 0.25) : width - Math.random() * (width * 0.25);
+      const y = height + 10;
+      const angle = fromLeft
+        ? (Math.PI * 0.24) + (Math.random() * 0.32)
+        : (Math.PI * 0.76) - (Math.random() * 0.32);
+      const speed = 13 + Math.random() * 13;
+
+      particles.push({
+        x,
+        y,
+        vx: Math.cos(angle) * speed * (fromLeft ? 1 : -1),
+        vy: -Math.sin(angle) * speed,
+        w: 7 + Math.random() * 8,
+        h: 5 + Math.random() * 6,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        rotation: Math.random() * Math.PI * 2,
+        vRot: (Math.random() - 0.5) * 0.22,
+        wobble: Math.random() * 10,
+        vWobble: 0.08 + Math.random() * 0.08,
+        shape: Math.random() > 0.35 ? 'rect' : 'circle',
+        opacity: 1
+      });
+    }
+
+    const startTime = performance.now();
+    const gravity = 0.42;
+    const drag = 0.985;
+
+    function frame(now) {
+      const elapsed = now - startTime;
+      if (elapsed >= durationMs) {
+        ctx.clearRect(0, 0, width, height);
+        confettiAnimId = null;
+        return;
+      }
+
+      ctx.clearRect(0, 0, width, height);
+      const fadeProgress = elapsed > (durationMs - 1000) ? (durationMs - elapsed) / 1000 : 1;
+
+      for (const p of particles) {
+        p.vx *= drag;
+        p.vy = (p.vy + gravity) * drag;
+        p.x += p.vx;
+        p.y += p.vy;
+        p.rotation += p.vRot;
+        p.wobble += p.vWobble;
+
+        const currentOpacity = Math.max(0, p.opacity * fadeProgress);
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rotation);
+        ctx.scale(Math.cos(p.wobble), 1);
+        ctx.globalAlpha = currentOpacity;
+        ctx.fillStyle = p.color;
+
+        if (p.shape === 'rect') {
+          ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+        } else {
+          ctx.beginPath();
+          ctx.arc(0, 0, p.w / 2.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+
+      confettiAnimId = requestAnimationFrame(frame);
+    }
+
+    confettiAnimId = requestAnimationFrame(frame);
+  }
+
   function afterAction(played, origin) {
     selectedTileId = null;
     const move = game.lastMove;
@@ -795,7 +910,11 @@
       : move.kind === 'pass' ? { seat: move.seat, text: 'Стучу' } : null;
     if (game.phase !== 'playing') {
       record('round_end');
-      setTimeout(() => globalThis.DominoSound?.playFanfare(game.phase === 'match-over'), 400);
+      const matchOver = game.phase === 'match-over';
+      setTimeout(() => {
+        globalThis.DominoSound?.playFanfare(matchOver);
+        if (matchOver) triggerConfetti();
+      }, 400);
     }
     if (!played) {
       if (move.kind === 'pass') globalThis.DominoSound?.playKnock();
@@ -933,6 +1052,8 @@
       if (isNetworkMode) {
         globalThis.DominoNet?.leave();
         isNetworkMode = false;
+        const netBadge = byId('net-room-badge');
+        if (netBadge) netBadge.hidden = true;
       }
       const targetMode = Number(button.dataset.mode);
       record('mode_switch', { fromMode: game.playerCount, toMode: targetMode });
@@ -960,6 +1081,8 @@
     if (isNetworkMode) {
       globalThis.DominoNet?.leave();
       isNetworkMode = false;
+      const netBadge = byId('net-room-badge');
+      if (netBadge) netBadge.hidden = true;
     }
     record('voluntary_restart', {
       fromRound: game.roundNumber,
@@ -1130,6 +1253,20 @@
       setTimeout(() => { if (copyLinkStatus) copyLinkStatus.textContent = ''; }, 4000);
     });
 
+    const netBadgeCopy = byId('net-badge-copy');
+    const netToast = byId('net-toast');
+    netBadgeCopy?.addEventListener('click', async () => {
+      if (!net?.roomId) return;
+      const url = location.origin + location.pathname + '?room=' + net.roomId;
+      try {
+        await navigator.clipboard.writeText(url);
+      } catch {}
+      if (netToast) {
+        netToast.hidden = false;
+        setTimeout(() => { netToast.hidden = true; }, 2200);
+      }
+    });
+
     btnRandomTeams?.addEventListener('click', () => {
       net?.randomizeTeams();
     });
@@ -1147,6 +1284,8 @@
     btnLeaveRoom?.addEventListener('click', () => {
       net?.leave();
       isNetworkMode = false;
+      const netBadge = byId('net-room-badge');
+      if (netBadge) netBadge.hidden = true;
       if (lobbyRoom) lobbyRoom.hidden = true;
       if (lobbyWelcome) lobbyWelcome.hidden = false;
       startMatch(2);
@@ -1182,6 +1321,13 @@
         if (lobbyRoom) lobbyRoom.hidden = false;
         if (displayRoomCode) displayRoomCode.textContent = lobby.roomId;
         if (lobbyError) lobbyError.hidden = true;
+
+        const netBadge = byId('net-room-badge');
+        const netCode = byId('net-badge-code');
+        if (netBadge && netCode) {
+          netCode.textContent = lobby.roomId;
+          netBadge.hidden = false;
+        }
 
         const mySeatIdx = net.mySeat;
         const isHost = net.isHost;
@@ -1352,7 +1498,11 @@
 
         render(origin, cue);
         if (!wasPaused && newMove && (sGame.phase === 'round-over' || sGame.phase === 'match-over')) {
-          setTimeout(() => globalThis.DominoSound?.playFanfare(sGame.phase === 'match-over'), 400);
+          const matchOver = sGame.phase === 'match-over';
+          setTimeout(() => {
+            globalThis.DominoSound?.playFanfare(matchOver);
+            if (matchOver) triggerConfetti();
+          }, 400);
         }
       });
 

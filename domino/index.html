@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#153a2f">
   <title>Пятёрочка · Домино до 71</title>
-  <link rel="stylesheet" href="style.css?v=2.6">
+  <link rel="stylesheet" href="style.css?v=2.7">
   <script defer src="engine.js?v=2.0"></script>
   <script defer src="layout.js?v=2.0"></script>
-  <script defer src="sound.js?v=2.4"></script>
+  <script defer src="sound.js?v=2.7"></script>
   <script defer src="quick-messages.js?v=2.2"></script>
   <script defer src="net.js?v=2.2"></script>
-  <script defer src="app.js?v=2.3"></script>
+  <script defer src="app.js?v=2.7"></script>
 </head>
 <body>
   <div class="shell">
@@ -30,6 +30,14 @@
         <button type="button" data-mode="4" aria-pressed="false">2×2</button>
       </div>
       <div class="utilities">
+        <div class="net-room-badge" id="net-room-badge" hidden>
+          <span class="net-pulse-dot" aria-hidden="true"></span>
+          <span class="net-room-text">Стол <strong id="net-badge-code">----</strong></span>
+          <button type="button" class="net-copy-btn" id="net-badge-copy" title="Скопировать ссылку для друзей" aria-label="Скопировать ссылку на стол">
+            📋 <span class="net-copy-label">Ссылка</span>
+          </button>
+          <span class="net-toast" id="net-toast" hidden>Скопировано!</span>
+        </div>
         <button type="button" class="button secondary sound-btn" id="sound-toggle" aria-label="Звук: Включен" title="Включить / выключить звук">🔊</button>
         <button type="button" class="button primary" id="online-open">Онлайн игра</button>
         <button type="button" class="button secondary" id="rules-open">Правила</button>
@@ -88,17 +96,57 @@
       <h2 id="rules-title">Правила Пятёрочки</h2>
       <form method="dialog"><button type="submit" class="button secondary" aria-label="Закрыть правила">Закрыть</button></form>
     </div>
-    <ul class="rules-list">
-      <li>Подбирайте кость с числом на открытом конце. Если подходит только одна ветка, кость сразу ляжет на стол. При нескольких подходящих ветках выберите одну.</li>
-      <li>Если открыты дубль 5–5 и другая свободная пятёрка, к дублю ходить нельзя. Выберите любую другую свободную пятёрку. Если пятёрка доступна только на дубле, к нему можно ходить.</li>
-      <li>Первый дубль становится домом. После присоединения костей слева и справа открываются две боковые ветки. Пустые ветки в сумму концов не входят.</li>
-      <li>За первую кость кона два очка даёт только дубль 5–5. При счёте 70 он очков не прибавляет. После первого хода сумма концов, кратная пяти, даёт одно очко за каждые пять точек. Партия заканчивается сразу при достижении 71.</li>
-      <li>При отсутствии подходящей кости доберите из базара. Если он пуст, пасуйте. Полный круг пасов завершает кон «рыбой».</li>
-      <li>В первом кону открывают старшим розданным дублем или самой тяжёлой костью, если все дубли в базаре. Каждый следующий кон открывает игрок по часовой стрелке от предыдущего ставщика. Он может выбрать любую кость.</li>
-      <li>При выходе в бонус идут остатки всех остальных. При «рыбе» выигрывает игрок с наименьшим остатком. В 1×1 и втроём его остаток вычитают из суммы остальных. В 2×2 складывают остатки трёх остальных игроков, включая напарника победителя. Итоговую сумму округляют вверх до кратного пяти и делят на пять. Перевод рядом с каждой рукой показан для справки. При ничьей за минимум бонуса нет.</li>
-      <li>Пас не лишает бонуса за выход. Одна оставшаяся кость 0–0 считается за десять точек в режимах 1×1 и втроём. В 2×2 она всегда даёт ноль.</li>
-      <li>В 2×2 очки общие с напарником напротив. Его остаток учитывается при подсчёте бонуса так же, как остатки соперников.</li>
-    </ul>
+    <div class="rules-grid">
+      <div class="rule-card">
+        <span class="rule-icon" aria-hidden="true">🎯</span>
+        <div class="rule-content">
+          <h3>Цель игры: 71 очко</h3>
+          <p>Игра идет сериями раундов (конов). Партию выигрывает игрок (или пара 2×2), первым набравший <strong>71 очко</strong>.</p>
+        </div>
+      </div>
+
+      <div class="rule-card">
+        <span class="rule-icon" aria-hidden="true">🖐</span>
+        <div class="rule-content">
+          <h3>Очки за кратность 5</h3>
+          <p>Если после хода сумма точек на всех открытых концах кратна 5, игрок сразу получает очки: <strong>5 точек = +1 очко, 10 = +2, 15 = +3, 20 = +4, 25 = +5</strong>.</p>
+        </div>
+      </div>
+
+      <div class="rule-card">
+        <span class="rule-icon" aria-hidden="true">🏠</span>
+        <div class="rule-content">
+          <h3>«Дом» — первый дубль</h3>
+          <p>Первый выставленный дубль становится центром («домом»). Сначала к нему приставляются кости слева и справа, после чего открываются верхняя и нижняя ветки (до 4 направлений).</p>
+        </div>
+      </div>
+
+      <div class="rule-card">
+        <span class="rule-icon" aria-hidden="true">🐟</span>
+        <div class="rule-content">
+          <h3>«Рыба» и бонус за выход</h3>
+          <p>Игрок, скинувший все кости, получает бонус за остатки у других. Если ходов нет ни у кого («рыба»), побеждает игрок с наименьшим остатком, а разница округляется до 5 в его пользу.</p>
+        </div>
+      </div>
+
+      <div class="rule-card">
+        <span class="rule-icon" aria-hidden="true">🤝</span>
+        <div class="rule-content">
+          <h3>Командный режим 2×2</h3>
+          <p>Напарники сидят напротив, очки суммируются. Оставшийся дубль 0–0 в режиме 2×2 дает 0 очков (в 1×1 и втроем — 10 очков).</p>
+        </div>
+      </div>
+    </div>
+
+    <details class="rules-details">
+      <summary>Тонкости и регламент ходов</summary>
+      <ul>
+        <li>В первом кону открывают старшим дублем (или самой тяжелой костью). Следующие коны открывает следующий игрок по кругу любой костью.</li>
+        <li>За первую кость кона два очка дает только дубль 5–5 (при счете 70 очков не дает).</li>
+        <li>Если открыты дубль 5–5 и другая свободная пятерка, к дублю ходить нельзя, пока свободна другая пятерка.</li>
+        <li>При отсутствии хода доберите кость из базара. Если базар пуст — объявите пас (стук).</li>
+      </ul>
+    </details>
     <details class="log-details">
       <summary>Журнал партий</summary>
       <p id="history-status"></p>
@@ -224,5 +272,6 @@
     </div>
     <div id="lobby-error" class="lobby-error" role="alert" hidden></div>
   </dialog>
+  <canvas id="confetti-canvas" class="confetti-canvas" aria-hidden="true"></canvas>
 </body>
 </html>
